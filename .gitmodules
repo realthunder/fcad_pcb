@@ -1,0 +1,3 @@
+[submodule "kicad_parser"]
+	path = kicad_parser
+	url = git@github.com:realthunder/kicad_parser.git
