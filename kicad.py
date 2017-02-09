@@ -19,25 +19,31 @@ from kicad_parser import KicadPCB,SexpList
 
 import logging
 
+def updateGui():
+    try:
+        FreeCADGui.updateGui()
+    except Exception:
+        pass
+
 class FCADLogger:
     def isEnabledFor(self,__):
         return True
 
     def debug(self,msg):
         Console.PrintLog(msg+'\n')
-        FreeCADGui.updateGui()
+        updateGui()
 
     def info(self,msg):
         Console.PrintMessage(msg+'\n')
-        FreeCADGui.updateGui()
+        updateGui()
 
     def error(self,msg):
         Console.PrintError(msg+'\n')
-        FreeCADGui.updateGui()
+        updateGui()
 
     def warning(self,msg):
         Console.PrintWarning(msg+'\n')
-        FreeCADGui.updateGui()
+        updateGui()
 
 logger = FCADLogger()
 #  logger = logging.getLogger(__name__)
@@ -46,6 +52,12 @@ def getActiveDoc():
     if FreeCAD.ActiveDocument is None:
         return FreeCAD.newDocument('kicad_fcad')
     return FreeCAD.ActiveDocument
+
+def fitView():
+    try:
+        FreeCADGui.ActiveDocument.ActiveView.fitAll()
+    except Exception:
+        pass
 
 def isZero(f):
     return round(f,DraftGeomUtils.precision())==0
@@ -629,6 +641,7 @@ class KicadFcad:
             obj.ViewObject.ShapeColor = self.colors['board']
 
         self._popLog('board done')
+        fitView();
         return obj
 
 
@@ -862,6 +875,7 @@ class KicadFcad:
             self.setColor(objs,'pad')
 
         self._popLog('pads done')
+        fitView();
         return objs
 
 
@@ -930,6 +944,7 @@ class KicadFcad:
             self.setColor(objs,'track')
 
         self._popLog('tracks done')
+        fitView();
         return objs
 
 
@@ -1051,6 +1066,7 @@ class KicadFcad:
             self.setColor(objs,'zone')
 
         self._popLog('zones done')
+        fitView();
         return objs
 
 
@@ -1102,6 +1118,7 @@ class KicadFcad:
         self._place(obj,Vector(0,0,z))
 
         self._popLog('done copper layer {}',self.layer)
+        fitView();
         return obj
 
 
@@ -1138,6 +1155,7 @@ class KicadFcad:
             self.setLayer(layer_save)
 
         self._popLog('done making all copper layers')
+        fitView();
         return objs
 
 
@@ -1231,6 +1249,7 @@ class KicadFcad:
                 parts = grp
 
         self._popLog('done loading parts on layer {}',self.layer)
+        fitView();
         return parts
 
 
@@ -1249,6 +1268,7 @@ class KicadFcad:
             self._log('{}',e,level='error')
         finally:
             self.setLayer(layer)
+        fitView();
         return objs
 
 
@@ -1274,6 +1294,7 @@ class KicadFcad:
                 self.setLayer(layer)
 
         self._popLog('done')
+        fitView();
         return objs
 
 
