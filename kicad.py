@@ -209,12 +209,19 @@ def clearModelCache():
     _model_cache = {}
 
 def loadModel(filename):
+    mtime = None
     try:
+        mtime = os.path.getmtime(filename)
         obj = _model_cache[filename]
-        logger.info('model cache hit');
-        return obj
+        if obj[2] == mtime:
+            logger.info('model cache hit');
+            return obj
+        else:
+            logger.info('model reload due to time stamp change');
     except KeyError:
         pass
+    except OSError:
+        return
 
     import ImportGui
     doc = getActiveDoc()
@@ -229,7 +236,7 @@ def loadModel(filename):
         obj.Links = dobjs
         obj.recompute()
         dobjs = [obj]+dobjs
-        obj = (obj.Shape.copy(),obj.ViewObject.DiffuseColor)
+        obj = (obj.Shape.copy(),obj.ViewObject.DiffuseColor,mtime)
         _model_cache[filename] = obj
         return obj
     except Exception as ex:
