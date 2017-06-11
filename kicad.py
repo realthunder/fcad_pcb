@@ -928,7 +928,9 @@ class KicadFcad:
             i+=len(ss)
             edges = []
             for s in ss:
-                edges.append(Part.makeLine(makeVect(s.start),makeVect(s.end)))
+                if s.start != s.end:
+                    edges.append(Part.makeLine(makeVect(s.start),makeVect(s.end)))
+                else:
             objs.append(func(edges))
 
         if objs:
