@@ -938,6 +938,7 @@ class KicadFcad:
                 if s.start != s.end:
                     edges.append(Part.makeLine(makeVect(s.start),makeVect(s.end)))
                 else:
+                    logger.warning('Line (Track) through identical points '+str(s.start))
             objs.append(func(edges))
 
         if objs:
