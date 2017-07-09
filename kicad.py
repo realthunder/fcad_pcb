@@ -17,8 +17,6 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from kicad_parser import KicadPCB,SexpList
 
-import logging
-
 def updateGui():
     try:
         FreeCADGui.updateGui()
@@ -26,27 +24,43 @@ def updateGui():
         pass
 
 class FCADLogger:
-    def isEnabledFor(self,__):
-        return True
+    def __init__(self, tag):
+        self.tag = tag
+        self.levels = { 'error':0, 'warning':1, 'info':2,
+                'log':3, 'trace':4 }
 
-    def debug(self,msg):
-        Console.PrintLog(msg+'\n')
-        updateGui()
+    def _isEnabledFor(self,level):
+        return FreeCAD.getLogLevel(self.tag) >= level
+
+    def isEnabledFor(self,level):
+        return self._isEnabledFor(self.levels[level])
+
+    def trace(self,msg):
+        if self._isEnabledFor(4):
+            FreeCAD.Console.PrintLog(msg+'\n')
+            updateGui()
+
+    def log(self,msg):
+        if self._isEnabledFor(3):
+            FreeCAD.Console.PrintLog(msg+'\n')
+            updateGui()
 
     def info(self,msg):
-        Console.PrintMessage(msg+'\n')
-        updateGui()
-
-    def error(self,msg):
-        Console.PrintError(msg+'\n')
-        updateGui()
+        if self._isEnabledFor(2):
+            FreeCAD.Console.PrintMessage(msg+'\n')
+            updateGui()
 
     def warning(self,msg):
-        Console.PrintWarning(msg+'\n')
-        updateGui()
+        if self._isEnabledFor(1):
+            FreeCAD.Console.PrintWarning(msg+'\n')
+            updateGui()
 
-logger = FCADLogger()
-#  logger = logging.getLogger(__name__)
+    def error(self,msg):
+        if self._isEnabledFor(0):
+            FreeCAD.Console.PrintError(msg+'\n')
+            updateGui()
+
+logger = FCADLogger('fcad_pcb')
 
 def getActiveDoc():
     if FreeCAD.ActiveDocument is None:
@@ -312,9 +326,8 @@ class KicadFcad:
         if kargs:
             if 'level' in kargs:
                 level = kargs['level']
-        if not logger.isEnabledFor(getattr(logging,level.upper())):
-            return
-        getattr(logger,level)('{}{}'.format(self.prefix,msg.format(*arg)))
+        if logger.isEnabledFor(level):
+            getattr(logger,level)('{}{}'.format(self.prefix,msg.format(*arg)))
 
 
     def _pushLog(self,msg=None,*arg,**kargs):
