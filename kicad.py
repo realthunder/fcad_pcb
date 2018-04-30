@@ -99,14 +99,17 @@ def getAt(at):
 def product(v1,v2):
     return Vector(v1.x*v2.x,v1.y*v2.y,v1.z*v2.z)
 
-def make_rect(size):
+def make_rect(size,params=None):
+    _ = params 
     return Part.makePolygon([product(size,Vector(*v))
         for v in ((-0.5,-0.5),(0.5,-0.5),(0.5,0.5),(-0.5,0.5),(-0.5,-0.5))])
 
-def make_circle(size):
+def make_circle(size,params=None):
+    _ = params
     return Part.Wire(Part.makeCircle(size.x*0.5))
 
-def make_oval(size):
+def make_oval(size,params=None):
+    _ = params
     if size.x == size.y:
         return make_circle(size)
     if size.x < size.y:
@@ -125,6 +128,32 @@ def make_oval(size):
             Part.makeLine(pts[1],pts[2]),
             Part.makeCircle(r,pts[3],Vector(0,0,1),a[2],a[3]),
             Part.makeLine(pts[4],pts[5])])
+
+def make_roundrect(size,params):
+    rratio = 0.25
+    try:
+        rratio = params['roundrect_rratio']
+        if rratio >= 0.5:
+            return make_oval(size)
+    except KeyError:
+        logger.warning('round rect pad has no rratio')
+
+    if size.x < size.y:
+        r = size.x*rratio
+    else:
+        r = size.y*rratio
+    n = Vector(0,0,1)
+    sx = size.x*0.5
+    sy = size.y*0.5
+    return Part.Wire([
+            Part.makeCircle(r,Vector(sx-r,sy-r),n,0,90),
+            Part.makeLine(Vector(sx-r,sy),Vector(r-sx,sy)),
+            Part.makeCircle(r,Vector(r-sx,sy-r),n,90,180),
+            Part.makeLine(Vector(-sx,sy-r),Vector(-sx,r-sy)),
+            Part.makeCircle(r,Vector(r-sx,r-sy),n,180,270),
+            Part.makeLine(Vector(r-sx,-sy),Vector(sx-r,-sy)),
+            Part.makeCircle(r,Vector(sx-r,r-sy),n,270,360),
+            Part.makeLine(Vector(sx,r-sy),Vector(sx,sy-r))])
 
 def makeThickLine(p1,p2,width):
     length = p1.distanceToPoint(p2)
@@ -912,7 +941,7 @@ class KicadFcad:
                     raise NotImplementedError(
                             'pad shape {} not implemented\n'.format(shape))
 
-                w = make_shape(Vector(*p.size))
+                w = make_shape(Vector(*p.size),p)
                 at,angle = getAt(p.at)
                 angle -= m_angle;
                 if not isZero(angle):
