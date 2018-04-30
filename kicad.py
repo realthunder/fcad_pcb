@@ -790,8 +790,8 @@ class KicadFcad:
         self._log('total holes added: {}',
                 count+oval_count+len(self.pcb.via)-skip_count)
 
+        objs = []
         if holes or ovals:
-            objs = []
             if self.merge_holes:
                 for o in ovals.values():
                     objs += o
