@@ -701,6 +701,8 @@ class KicadFcad:
 
         obj = func()
         if self.add_feature:
+            if hasattr(obj.ViewObject,'MapFaceColor'):
+                obj.ViewObject.MapFaceColor = False
             obj.ViewObject.ShapeColor = self.colors['board']
 
         self._popLog('board done')
@@ -979,6 +981,8 @@ class KicadFcad:
             color = self.colors[otype][self.layer_type]
         except KeyError:
             color = self.colors[otype][0]
+        if hasattr(obj.ViewObject,'MapFaceColor'):
+            obj.ViewObject.MapFaceColor = False
         obj.ViewObject.ShapeColor = color
 
 
