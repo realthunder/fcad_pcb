@@ -24,7 +24,7 @@ Start FreeCAD, in the console, the simplest usage:
 - generating copper layers
 
 ```python
-form fcad_pcb import kicad
+from fcad_pcb import kicad
 pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>)
 pcb.makeCoppers()
 ```
@@ -32,7 +32,7 @@ pcb.makeCoppers()
 - generating copper layers, pads, drills as a full solid object, ready to be handled in FEM WB
 
 ```python
-form fcad_pcb import kicad
+from fcad_pcb import kicad
 pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>)
 pcb.make(copper_thickness=0.035, board_thickness=1.53, combo=False, fuseCoppers=True )
 ```
@@ -47,7 +47,7 @@ pcb.makeCopper()
 In case you only want the shape without any intermediate document objects,
 
 ```python
-form fcad_pcb import kicad
+from fcad_pcb import kicad
 pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>, add_feature=False)
 # Or, you can set the parameter later
 pcb.add_feature = False
@@ -75,4 +75,4 @@ Note that there is a **sample board** to play with inside the repo:
 ![Full Board Loaded in FC for FEM](screenshots/fcad_pcb-generating-for-FEM.gif?raw=true "Full Board Loaded in FC for FEM")
 
 ### Requirements
-- FreeCAD 0.17
+- FreeCAD 0.17, FreeCAD 0.18
