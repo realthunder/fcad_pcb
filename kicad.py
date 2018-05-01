@@ -319,7 +319,6 @@ class KicadFcad:
         self.make_sketch = False
         self.sketch_use_draft = False
         self.sketch_radius_precision = -1
-        self.work_plane = Part.makeCircle(1)
         self.holes_cache = {}
         self.active_doc_uuid = None
         self.sketch_constraint = True
@@ -577,7 +576,7 @@ class KicadFcad:
                 ret.Operation = op
                 ret.Fill = fill
                 ret.Offset = offset
-                ret.WorkPlane = self.work_plane
+                ret.Coplanar = 0
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
                 for o in obj:
@@ -585,8 +584,7 @@ class KicadFcad:
 
             recomputeObj(ret)
         else:
-            ret = Path.Area(Fill=fill,FitArcs=fit_arcs)
-            ret.setPlane(self.work_plane)
+            ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0)
             ret.add(obj,op=op)
             if offset:
                 ret = ret.makeOffset(offset=offset)
