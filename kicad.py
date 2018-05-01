@@ -353,7 +353,7 @@ class KicadFcad:
 
         # This will be override by setLayer. It's here just to make syntax
         # checker happy
-        self.layer = 'Fu.C'
+        self.layer = 'F.Cu'
 
         self.setLayer(self.layer_type)
 
@@ -1260,7 +1260,8 @@ class KicadFcad:
             if not obj:
                 continue
             if shape_type=='solid':
-                self._place(obj,Vector(0,0,offset))
+                ofs = offset if self.layer.startswith('F.') else -offset
+                self._place(obj,Vector(0,0,ofs))
             objs.append(obj)
 
         if shape_type=='solid':
