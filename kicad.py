@@ -132,10 +132,10 @@ def make_oval(size,params=None):
 def make_roundrect(size,params):
     rratio = 0.25
     try:
-        rratio = params['roundrect_rratio']
+        rratio = params.roundrect_rratio
         if rratio >= 0.5:
             return make_oval(size)
-    except KeyError:
+    except Exception:
         logger.warning('round rect pad has no rratio')
 
     if size.x < size.y:
@@ -154,6 +154,26 @@ def make_roundrect(size,params):
             Part.makeLine(Vector(r-sx,-sy),Vector(sx-r,-sy)),
             Part.makeCircle(r,Vector(sx-r,r-sy),n,270,360),
             Part.makeLine(Vector(sx,r-sy),Vector(sx,sy-r))])
+
+def make_custom(size,params):
+    _ = size
+    width = 0
+    try:
+        pts = params.primitives.gr_poly.pts
+        if 'width' in pts:
+            width = pts.width
+        points = SexpList(pts.xy)
+        # close the polygon
+        points._append(pts.xy._get(0))
+        logger.info('polyline points: {}'.format(len(points)))
+    except Exception:
+        raise RuntimeError('Cannot find polyline points in custom pad')
+
+    wire = Part.makePolygon([makeVect(p) for p in points])
+    if width:
+        wire = Path.Area(Offset=width*0.5).add(wire).getShape()
+    return wire
+
 
 def makeThickLine(p1,p2,width):
     length = p1.distanceToPoint(p2)
