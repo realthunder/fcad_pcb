@@ -544,9 +544,7 @@ class KicadFcad:
             return self._makeObject('Part::Compound',
                     '{}_combo'.format(name),label,'Links',obj)
 
-        obj = Part.makeCompound(obj)
-        recomputeObj(obj)
-        return obj
+        return Part.makeCompound(obj)
 
 
     def _makeArea(self,obj,name,offset=0,op=0,fill=None,label=None,
@@ -558,9 +556,10 @@ class KicadFcad:
         else:
             fill = 0
 
+        if not isinstance(obj,(list,tuple)):
+            obj = (obj,)
+
         if self.add_feature:
-            if not isinstance(obj,(list,tuple)):
-                obj = (obj,)
 
             if not force and obj[0].TypeId == 'Path::FeatureArea' and (
                 obj[0].Operation == op or len(obj[0].Sources)==1) and \
@@ -585,7 +584,8 @@ class KicadFcad:
             recomputeObj(ret)
         else:
             ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0)
-            ret.add(obj,op=op)
+            for o in obj:
+                ret.add(o,op=op)
             if offset:
                 ret = ret.makeOffset(offset=offset)
             else:
