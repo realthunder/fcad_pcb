@@ -44,6 +44,20 @@ pcb.setLayer('F.Cu')
 pcb.makeCopper()
 ```
 
+In case you only want the shape without any intermediate document objects,
+
+```python
+form fcad_pcb import kicad
+pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>, add_feature=False)
+# Or, you can set the parameter later
+pcb.add_feature = False
+
+# All the above makeXXX() calls now returns a shape without creating any features
+# For example, if you want the complete fused copper layers
+coppers = pcb.makeCoppers(shape_type='solid',holes=True,fuse=True)
+Part.show(coppers)
+```
+
 Note that there is a **sample board** to play with inside the repo:
 [test.kicad_pcb](kicad_parser/test.kicad_pcb)
 
