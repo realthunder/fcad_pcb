@@ -320,6 +320,7 @@ class KicadFcad:
         self.sketch_use_draft = False
         self.sketch_radius_precision = -1
         self.holes_cache = {}
+        self.work_plane = Part.makeCircle(1)
         self.active_doc_uuid = None
         self.sketch_constraint = True
         self.sketch_align_constraint = False
@@ -548,7 +549,7 @@ class KicadFcad:
 
 
     def _makeArea(self,obj,name,offset=0,op=0,fill=None,label=None,
-                    force=False,fit_arcs=False,reorient=False):
+                force=False,fit_arcs=False,reorient=False,workplane=False):
         if fill is None:
             fill = 2
         elif fill:
@@ -576,6 +577,8 @@ class KicadFcad:
                 ret.Fill = fill
                 ret.Offset = offset
                 ret.Coplanar = 0
+                if workplane:
+                    ret.WorkPlane = self.work_plane
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
                 for o in obj:
@@ -584,6 +587,8 @@ class KicadFcad:
             recomputeObj(ret)
         else:
             ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0)
+            if workplane:
+                ret.setPlane(self.work_plane)
             for o in obj:
                 ret.add(o,op=op)
             if offset:
@@ -593,7 +598,8 @@ class KicadFcad:
         return ret
 
 
-    def _makeWires(self,obj,name,offset=0,fill=False,label=None,fit_arcs=False):
+    def _makeWires(self,obj,name,offset=0,fill=False,label=None,
+            fit_arcs=False,workplane=False):
 
         if self.add_feature:
             if self.make_sketch:
@@ -617,7 +623,7 @@ class KicadFcad:
 
         if fill or offset:
             return self._makeArea(obj,name,offset=offset,fill=fill,
-                    fit_arcs=fit_arcs,label=label)
+                    fit_arcs=fit_arcs,label=label,workplane=workplane)
         else:
             return self._makeCompound(obj,name,label=label)
 
@@ -1041,8 +1047,8 @@ class KicadFcad:
         width = 0
         def _line(edges,offset=0,fill=False):
             wires = findWires(edges)
-            return self._makeWires(wires,'track',
-                            offset=offset,fill=fill,label=width)
+            return self._makeWires(wires,'track', offset=offset,
+                    fill=fill, label=width, workplane=True)
 
         def _wire(edges,fill=False):
             return _line(edges,width*0.5,fill)
