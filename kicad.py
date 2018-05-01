@@ -794,24 +794,26 @@ class KicadFcad:
             for p in m.pad:
                 if 'drill' not in p:
                     continue
-                if npth:
-                    if p[1]=='np_thru_hole':
-                        if npth<0:
-                            skip_count += 1
-                            continue
-                    elif npth>0:
+                if p[1]=='np_thru_hole':
+                    if npth<0:
                         skip_count += 1
                         continue
+                    ofs = abs(offset)
+                else:
+                    if npth>0:
+                        skip_count += 1
+                        continue
+                    ofs = -abs(offset)
                 if p.drill.oval:
                     if not oval:
                         continue
                     size = Vector(p.drill[0],p.drill[1])
-                    w = make_oval(size+Vector(offset,offset))
+                    w = make_oval(size+Vector(ofs,ofs))
                     ovals[min(size.x,size.y)].append(w)
                     oval_count += 1
                 elif p.drill[0]>=minSize and \
                         (not maxSize or p.drill[0]<=maxSize):
-                    w = make_circle(Vector(p.drill[0]+offset))
+                    w = make_circle(Vector(p.drill[0]+ofs))
                     holes[p.drill[0]].append(w)
                     count += 1
                 else:
@@ -831,9 +833,10 @@ class KicadFcad:
 
         if npth<=0:
             skip_count = 0
+            ofs = -abs(offset)
             for v in self.pcb.via:
                 if v.drill>=minSize and (not maxSize or v.drill<=maxSize):
-                    w = make_circle(Vector(v.drill+offset))
+                    w = make_circle(Vector(v.drill+ofs))
                     holes[v.drill].append(w)
                     w.translate(makeVect(v.at))
                 else:
@@ -1307,9 +1310,10 @@ class KicadFcad:
             hole_shapes = None
         elif fuse:
             # make only npth holes
-            hole_shapes = self._cutHoles(None,holes,None,npth=1)
+            hole_shapes = self._cutHoles(None,holes,None,
+                    npth=1,offset=thickness)
         else:
-            hole_shapes = self._cutHoles(None,holes,None)
+            hole_shapes = self._cutHoles(None,holes,None,offset=thickness)
 
         try:
             for layer in layers:
@@ -1342,7 +1346,7 @@ class KicadFcad:
                 # make plated through holes with inward offset
                 drills = self.makeHoles(shape_type='solid',prefix=None,
                         thickness=board_thickness+6*thickness,
-                        oval=True,npth=-1,offset=-thickness)
+                        oval=True,npth=-1,offset=thickness)
                 if drills:
                     self._place(drills,FreeCAD.Vector(0,0,-thickness*2))
                     objs = self._makeCut(objs,drills,'coppers')
