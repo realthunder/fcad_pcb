@@ -1517,5 +1517,34 @@ class KicadFcad:
         fitView();
         return objs
 
+def getTestFile(name):
+    import glob
+    if not os.path.exists(name):
+        path = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(path,'tests')
+        if name:
+            path = os.path.join(path,name)
+    else:
+        path = name
+    if os.path.isdir(path):
+        return glob.glob(os.path.join(path,'*.kicad_pcb'))
+    if os.path.isfile(path):
+        return [path]
+    path += '.kicad_pcb'
+    if os.path.isfile(path):
+        return [path]
+    raise RuntimeError('Cannot find {}'.format(name))
 
+def test(names=''):
+    if not isinstance(names,(tuple,list)):
+        names = [names]
+    files = set()
+    for name in names:
+        files.update(getTestFile(name))
+    for f in files:
+        pcb = KicadFcad(f)
+        pcb.make()
+        pcb.make(fuseCoppers=True)
+        pcb.add_feature = False
+        Part.show(pcb.make())
 
