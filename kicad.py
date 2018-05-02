@@ -894,18 +894,24 @@ class KicadFcad:
         if not isinstance(holes,(Part.Feature,Part.Shape)):
             hit = False
             if self.holes_cache is not None:
-                key = '{}.{}.{}.{}.{}'.format(
-                        minSize,maxSize,oval,npth,offset)
+                key = '{}.{}.{}.{}.{}.{}'.format(
+                        self.add_feature,minSize,maxSize,oval,npth,offset)
                 doc = getActiveDoc();
-                if self.active_doc_uuid != doc.Uid:
+                if self.add_feature and self.active_doc_uuid!=doc.Uid:
                     self.holes_cache.clear()
                     self.active_doc_uuid = doc.Uid
 
                 try:
                     holes = self.holes_cache[key]
+                    if self.add_feature:
+                        # access the object's Name to make sure it is not
+                        # deleted
+                        self._log("fetch holes '{}' "
+                            "from cache".format(holes.Name))
+                    else:
+                        self._log("fetch holes from cache")
                     hit = True
-                    self._log("fetch holes from cache")
-                except KeyError:
+                except Exception:
                     pass
 
             if not hit:
