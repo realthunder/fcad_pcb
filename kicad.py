@@ -330,6 +330,7 @@ class KicadFcad:
         self.zone_merge_holes = not debug
         self.add_feature = True
         self.part_path = getKicadPath()
+        self.hole_size_offset = 0.0001
         if filename is None:
             filename = '/home/thunder/pwr.kicad_pcb'
         if not os.path.isfile(filename):
@@ -789,6 +790,8 @@ class KicadFcad:
         oval_count = 0
         count = 0
         skip_count = 0
+        if not offset:
+            offset = self.hole_size_offset;
         for m in self.pcb.module:
             m_at,m_angle = getAt(m.at)
             for p in m.pad:
@@ -1311,10 +1314,9 @@ class KicadFcad:
             hole_shapes = None
         elif fuse:
             # make only npth holes
-            hole_shapes = self._cutHoles(None,holes,None,
-                    npth=1,offset=thickness)
+            hole_shapes = self._cutHoles(None,holes,None,npth=1)
         else:
-            hole_shapes = self._cutHoles(None,holes,None,offset=thickness)
+            hole_shapes = self._cutHoles(None,holes,None)
 
         try:
             for layer in layers:
