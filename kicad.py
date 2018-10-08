@@ -15,7 +15,13 @@ import Path
 
 import sys, os
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-from kicad_parser import KicadPCB,SexpList
+from .kicad_parser import KicadPCB,SexpList
+
+PY3 = sys.version_info[0] == 3
+if PY3:
+    string_types = str,
+else:
+    string_types = basestring,
 
 def updateGui():
     try:
@@ -78,7 +84,7 @@ def isZero(f):
 
 def makeColor(*color):
     if len(color)==1:
-        if isinstance(color[0],basestring):
+        if isinstance(color[0],string_types):
             color = int(color[0],0)
         else:
             color = color[0]
@@ -1169,7 +1175,7 @@ class KicadFcad:
 
                 # `table` uses a pair of vertex as the key to store the index of
                 # an edge.
-                for i in xrange(len(pts)-1):
+                for i in range(len(pts)-1):
                     table[str((pts[i],pts[i+1]))] = i
 
                 # This is how kicad represents holes in zone polygon
@@ -1301,7 +1307,7 @@ class KicadFcad:
         layer_save = self.layer
         objs = []
         layers = []
-        for i in xrange(0,32):
+        for i in range(0,32):
             if str(i) in self.pcb.layers:
                 layers.append(i)
         if not layers:
