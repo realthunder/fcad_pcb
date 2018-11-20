@@ -263,7 +263,7 @@ def getKicadPath():
     if not os.path.isfile(kicad_common):
         logger.warning('cannot find kicad_common')
         return None
-    with open(kicad_common,'rb') as f:
+    with open(kicad_common,'r') as f:
         content = f.read()
     match = re.search(r'^\s*KISYS3DMOD\s*=\s*([^\r\n]+)',content,re.MULTILINE)
     if not match:
