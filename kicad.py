@@ -250,15 +250,22 @@ def unpack(obj):
     return obj
 
 
-def getKicadPath():
-    if sys.platform != 'win32':
-        path='/usr/share/kicad/modules/packages3d'
-        if not os.path.isdir(path):
-            path = '/usr/local/share/kicad/modules/packages3d'
-        return path
+def getKicadPath(env=''):
+    confpath = ''
+    if env:
+        confpath = os.path.expanduser(os.environ.get(env,''))
+        if not os.path.isdir(confpath):
+            confpath=''
+    if not confpath:
+        if sys.platform == 'darwin':
+            confpath = os.path.expanduser('~/Library/Preferences/kicad')
+        elif sys.platform == 'win32':
+            confpath = os.path.join(
+                    os.path.abspath(os.environ['APPDATA']),'kicad')
+        else:
+            confpath=os.path.expanduser('~/.config/kicad')
 
     import re
-    confpath = os.path.join(os.path.abspath(os.environ['APPDATA']),'kicad')
     kicad_common = os.path.join(confpath,'kicad_common')
     if not os.path.isfile(kicad_common):
         logger.warning('cannot find kicad_common')
@@ -335,7 +342,8 @@ class KicadFcad:
         self.merge_vias = not debug
         self.zone_merge_holes = not debug
         self.add_feature = True
-        self.part_path = getKicadPath()
+        self.part_path = None
+        self.path_env = 'KICAD_CONFIG_HOME'
         self.hole_size_offset = 0.0001
         if filename is None:
             filename = '/home/thunder/pwr.kicad_pcb'
@@ -356,6 +364,8 @@ class KicadFcad:
                 raise ValueError('unknown parameter "{}"'.format(key))
             setattr(self,key,value)
 
+        if not self.part_path:
+            self.part_path = getKicadPath(self.path_env)
         self.pcb = KicadPCB.load(self.filename)
 
         # This will be override by setLayer. It's here just to make syntax
