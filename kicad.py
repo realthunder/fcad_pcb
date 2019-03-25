@@ -197,8 +197,11 @@ def makeArc(center,start,angle):
     a = -degrees(DraftVecUtils.angle(p))
     # NOTE: KiCAD pcb geometry runs in clockwise, while FreeCAD is CCW. So the
     # resulting arc below is the reverse of what's specified in kicad_pcb
-    arc = Part.makeCircle(r,center,Vector(0,0,1),a-angle,a)
-    arc.reverse();
+    if angle>0:
+        arc = Part.makeCircle(r,center,Vector(0,0,1),a-angle,a)
+        arc.reverse();
+    else:
+        arc = Part.makeCircle(r,center,Vector(0,0,1),a,a-angle)
     return arc
 
 def findWires(edges):
