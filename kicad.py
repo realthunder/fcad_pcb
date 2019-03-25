@@ -753,7 +753,8 @@ class KicadFcad:
                         minSize=minHoleSize,oval=ovalHole)
 
         def _wire(fill=False):
-            obj = self._makeWires(wires,'board',fill=fill)
+            obj = self._makeWires(wires,'board',fill=fill,
+                    fit_arcs=fit_arcs and not holes)
             if not holes:
                 return obj
 
