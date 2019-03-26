@@ -44,7 +44,7 @@ pcb.setLayer('F.Cu')
 pcb.makeCopper()
 ```
 
-* <a name="net-filter"/>filtering by net name
+* <a name="net-filter"/>filtering by net name (for local nets you have to specify full hirarchical name)
 
 ```python
 pcb.setNetFilter('GND')
