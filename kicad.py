@@ -343,11 +343,13 @@ class KicadFcad:
         self.merge_holes = not debug
         self.merge_pads = not debug
         self.merge_vias = not debug
+        self.merge_tracks = not debug
         self.zone_merge_holes = not debug
         self.add_feature = True
         self.part_path = None
         self.path_env = 'KICAD_CONFIG_HOME'
         self.hole_size_offset = 0.0001
+        self.nets = []
         if filename is None:
             filename = '/home/thunder/pwr.kicad_pcb'
         if not os.path.isfile(filename):
@@ -377,6 +379,13 @@ class KicadFcad:
 
         self.setLayer(self.layer_type)
 
+        self._nets = set()
+        self.net_names = dict()
+        if 'net' in self.pcb:
+            for n in self.pcb.net:
+                self.net_names[n[0]] = n[1]
+            self.setNetFilter(*self.nets)
+
     def setLayer(self,layer):
         try:
             layer = int(layer)
@@ -393,6 +402,42 @@ class KicadFcad:
             self.layer_type = layer
             self.layer = self.pcb.layers[str(layer)][0]
 
+    def setNetFilter(self,*nets):
+        ndict = dict()
+        nset = set()
+        for n in self.pcb.net:
+            ndict[n[1]] = n[0]
+            nset.add(n[0])
+
+        for n in nets:
+            try:
+                self._nets.add(ndict[str(n)])
+                continue
+            except Exception:
+                pass
+            try:
+                if int(n) in nset:
+                    self._nets.add(int(n))
+                    continue
+            except Exception:
+                pass
+            logger.error('net {} not found'.format(n))
+
+    def getNet(self,p):
+        n = p.net
+        return n if not isinstance(n,list) else n[0]
+
+    def filterNets(self,p):
+        try:
+            return self._nets and self.getNet(p) not in self._nets
+        except Exception:
+            return bool(self._nets)
+
+    def netName(self,p):
+        try:
+            return self.net_names[self.getNet(p)]
+        except Exception:
+            return 'net?'
 
     def _log(self,msg,*arg,**kargs):
         level = 'info'
@@ -817,6 +862,9 @@ class KicadFcad:
             for p in m.pad:
                 if 'drill' not in p:
                     continue
+                if self.filterNets(p):
+                    skip_count += 1
+                    continue
                 if p[1]=='np_thru_hole':
                     if npth<0:
                         skip_count += 1
@@ -858,6 +906,9 @@ class KicadFcad:
             skip_count = 0
             ofs = -abs(offset)
             for v in self.pcb.via:
+                if self.filterNets(v):
+                    skip_count += 1
+                    continue
                 if v.drill>=minSize and (not maxSize or v.drill<=maxSize):
                     w = make_circle(Vector(v.drill+ofs))
                     holes[v.drill].append(w)
@@ -989,6 +1040,11 @@ class KicadFcad:
                     and '*' not in p.layers:
                     skip_count+=1
                     continue
+
+                if self.filterNets(p):
+                    skip_count+=1
+                    continue
+
                 shape = p[2]
 
                 try:
@@ -1005,7 +1061,7 @@ class KicadFcad:
                 w.translate(at)
                 if not self.merge_pads:
                     pads.append(func(w,'pad',
-                        '{}#{}#{}#{}'.format(i,j,p[0],ref)))
+                        '{}#{}#{}#{}#{}'.format(i,j,p[0],ref,self.netName(p))))
                 else:
                     pads.append(w)
 
@@ -1022,7 +1078,7 @@ class KicadFcad:
         via_skip = 0
         vias = []
         for i,v in enumerate(self.pcb.via):
-            if self.layer not in v.layers:
+            if self.layer not in v.layers or self.filterNets(v):
                 via_skip += 1
                 continue
             w = make_circle(Vector(v.size))
@@ -1077,16 +1133,16 @@ class KicadFcad:
         self._pushLog('making tracks...',prefix=prefix)
 
         width = 0
-        def _line(edges,offset=0,fill=False):
+        def _line(edges,label,offset=0,fill=False):
             wires = findWires(edges)
             return self._makeWires(wires,'track', offset=offset,
-                    fill=fill, label=width, workplane=True)
+                    fill=fill, label=label, workplane=True)
 
-        def _wire(edges,fill=False):
-            return _line(edges,width*0.5,fill)
+        def _wire(edges,label,fill=False):
+            return _line(edges,label,width*0.5,fill)
 
-        def _face(edges):
-            return _wire(edges,True)
+        def _face(edges,label):
+            return _wire(edges,label,True)
 
         _solid = _face
 
@@ -1095,28 +1151,38 @@ class KicadFcad:
         except KeyError:
             raise ValueError('invalid shape type: {}'.format(shape_type))
 
-        tracks = defaultdict(list)
+        tracks = defaultdict(lambda: defaultdict(list))
         count = 0
         for s in self.pcb.segment:
+            if self.filterNets(s):
+                continue
             if s.layer == self.layer:
-                tracks[s.width].append(s)
+                if self.merge_tracks:
+                    tracks[''][s.width].append(s)
+                else:
+                    tracks[self.netName(s)][s.width].append(s)
                 count += 1
 
         objs = []
         i = 0
-        for (width,ss) in iteritems(tracks):
-            self._log('making {} tracks of width {:.2f}, ({}/{})',
-                    len(ss),width,i,count)
-            i+=len(ss)
-            edges = []
-            for s in ss:
-                if s.start != s.end:
-                    edges.append(Part.makeLine(
-                        makeVect(s.start),makeVect(s.end)))
+        for (name,sss) in iteritems(tracks):
+            for (width,ss) in iteritems(sss):
+                self._log('making {} tracks {} of width {:.2f}, ({}/{})',
+                        len(ss),name,width,i,count)
+                i+=len(ss)
+                edges = []
+                for s in ss:
+                    if s.start != s.end:
+                        edges.append(Part.makeLine(
+                            makeVect(s.start),makeVect(s.end)))
+                    else:
+                        self._log('Line (Track) through identical points {}',
+                                s.start, level="warning")
+                if self.merge_tracks:
+                    label = '{}'.format(width)
                 else:
-                    self._log('Line (Track) through identical points {}',
-                            s.start, level="warning")
-            objs.append(func(edges))
+                    label = '{}#{}'.format(width,name)
+                objs.append(func(edges,label=label))
 
         if objs:
             objs = self._cutHoles(objs,holes,'tracks',fit_arcs=fit_arcs)
@@ -1175,7 +1241,7 @@ class KicadFcad:
 
         objs = []
         for z in self.pcb.zone:
-            if z.layer != self.layer:
+            if z.layer != self.layer or self.filterNets(z):
                 continue
             count = len(z.filled_polygon)
             self._pushLog('making zone {}...', z.net_name)
