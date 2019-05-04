@@ -204,6 +204,9 @@ def makeArc(center,start,angle):
         arc = Part.makeCircle(r,center,Vector(0,0,1),a,a-angle)
     return arc
 
+def makeCurve(poles):
+    return Part.BSplineCurve(poles).toShape()
+
 def findWires(edges):
     try:
         return [Part.Wire(e) for e in Part.sortEdges(edges)]
@@ -776,38 +779,145 @@ class KicadFcad:
         for l in self.pcb.gr_line:
             if l.layer != 'Edge.Cuts':
                 continue
-            edges.append(Part.makeLine(makeVect(l.start),makeVect(l.end)))
+            edges.append([l.width,
+                Part.makeLine(makeVect(l.start),makeVect(l.end))])
 
         self._log('making {} arcs',len(self.pcb.gr_arc))
         for l in self.pcb.gr_arc:
             if l.layer != 'Edge.Cuts':
                 continue
             # for gr_arc, 'start' is actual the center, and 'end' is the start
-            edges.append(makeArc(makeVect(l.start),makeVect(l.end),l.angle))
+            edges.append([l.width,
+                makeArc(makeVect(l.start),makeVect(l.end),l.angle)])
+
+        if hasattr(self.pcb,'gr_curve'):
+            self._log('making {} curves',len(self.pcb.gr_curve))
+            for l in self.pcb.gr_curve:
+                if l.layer != 'Edge.Cuts':
+                    continue
+                edges.append([l.width,
+                    makeCurve([makeVect(p) for p in SexpList(l.pts.xy)])])
 
         if not edges:
             self._popLog('no board edges found')
             return
 
-        wires = findWires(edges)
+        # The line width in edge cuts are important. When milling, the line
+        # width can represent the diameter of the drill bits to use. The user
+        # can use lines thick enough for hole cutting. In addition, the
+        # endpoints of thick lines do not have to coincide to complete a loop.
+        #
+        # Therefore, we shall use the line width as tolerance to detect closed
+        # wires. And for non-closed wires, if the shape_type is not wire, we
+        # shall thicken the wire using Path.Area for hole cutting.
+
+        for info in edges:
+            w,e = info
+            e.fixTolerance(w)
+            info += [e.firstVertex().Point,e.lastVertex().Point]
+
+        non_closed = defaultdict(list)
+
+        wires = []
+        while edges:
+            w,e,pstart,pend = edges.pop(-1)
+            wstart = wend = w
+            elist = [(w,e)]
+            closed = False
+            i = 0
+            while i < len(edges):
+                w,e,ps,pe = edges[i]
+                if pstart.distanceToPoint(ps) < (wstart+w)/2:
+                    e.reverse()
+                    pstart = pe
+                    wstart = w
+                    elist.insert(0,(w,e))
+                elif pstart.distanceToPoint(pe) < (wstart+w)/2:
+                    pstart = ps
+                    wstart = w
+                    elist.insert(0,(w,e))
+                elif pend.distanceToPoint(ps) < (wend+w)/2:
+                    e.reverse()
+                    pend = pe
+                    wend = w
+                    elist.append((w,e))
+                elif pend.distanceToPoint(pe) < (wend+w)/2:
+                    pend = ps
+                    wend = w
+                    elist.append((w,e))
+                else:
+                    i += 1
+                    continue
+                edges.pop(i)
+                i = 0
+                if pstart.distanceToPoint(pend) < (wstart+wend)/2:
+                    closed = True
+                    break
+
+            wire = None
+            try:
+                #  tol = max([o[0] for o in elist])
+                #  wire = Part.makeWires([o[1] for o in elist],'',tol,True)
+
+                wire = Part.Wire([o[1] for o in elist])
+                #  wire.fixWire(None,tol)
+                #  wire.fix(tol,tol,tol)
+            except Exception:
+                pass
+
+            if closed and (not wire or not wire.isClosed()):
+                logger.warning('wire not closed')
+                closed = False
+
+            if wire and closed:
+                wires.append(wire)
+            else:
+                for w,e in elist:
+                    non_closed[w].append(e)
 
         if not thickness:
             thickness = self.pcb.general.thickness
 
-        holes = self._cutHoles(None,holes,None,
-                        minSize=minHoleSize,oval=ovalHole)
+        def _addHoles(objs):
+            h = self._cutHoles(None,holes,None,
+                            minSize=minHoleSize,oval=ovalHole)
+            if isinstance(h,(tuple,list)):
+                objs += h
+            elif holes:
+                objs.append(h)
+            return objs
 
-        def _wire(fill=False):
-            obj = self._makeWires(wires,'board',fill=fill,
-                    fit_arcs=fit_arcs and not holes)
-            if not holes:
-                return obj
+        def _wire():
+            objs = []
 
-            return self._makeArea((obj,holes),'board',
-                            op=1,fill=fill,fit_arcs=fit_arcs)
+            if wires:
+                objs.append(self._makeWires(wires,'board'))
+
+            for width,edges in iteritems(non_closed):
+                objs.append(self._makeWires(edges,'board',label=width))
+
+            return self._makeCompound(_addHoles(objs),'board')
 
         def _face():
-            return _wire(True)
+            if not wires:
+                raise RuntimeError('no closed wire')
+
+            # Pick the wire with the largest area as outline
+            areas = [ Part.Face(w).Area for w in wires ]
+            outer = wires.pop(areas.index(max(areas)))
+
+            objs = [ self._makeWires(outer,'board',label='outline') ]
+            if wires:
+                objs.append(self._makeWires(wires,'board',label='inner'))
+
+            for width,elist in iteritems(non_closed):
+                wire = self._makeWires(elist,'board',label=width)
+                # thicken non closed wire for hole cutting
+                objs.append(self._makeArea(wire,'board',label=width,
+                                           offset = width*0.5))
+
+            return self._makeArea(_addHoles(objs),'board',
+                            op=1,fill=True,fit_arcs=fit_arcs)
 
         def _solid():
             return self._makeSolid(_face(),'board',thickness,
