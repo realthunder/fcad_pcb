@@ -23,6 +23,11 @@ if PY3:
 else:
     string_types = basestring,
 
+def unquote(s):
+    if len(s)>1 and s[0]=='"':
+        return s[1:-1]
+    return s
+
 def updateGui():
     try:
         FreeCADGui.updateGui()
@@ -376,9 +381,12 @@ class KicadFcad:
             self.part_path = getKicadPath(self.path_env)
         self.pcb = KicadPCB.load(self.filename)
 
-        # This will be override by setLayer. It's here just to make syntax
-        # checker happy
-        self.layer = 'F.Cu'
+        # stores layer name as read from the file, may contain quotes depending
+        # on kicad version
+        self.layer_name = ''
+
+        # stores layer name without quote
+        self.layer = ''
 
         self.setLayer(self.layer_type)
 
@@ -389,21 +397,23 @@ class KicadFcad:
                 self.net_names[n[0]] = n[1]
             self.setNetFilter(*self.nets)
 
-    def setLayer(self,layer):
+    def findLayer(self,layer):
         try:
             layer = int(layer)
         except:
             for layer_type in self.pcb.layers:
-                if self.pcb.layers[layer_type][0] == layer:
-                    self.layer = layer
-                    self.layer_type = int(layer_type)
-                    return
+                name = self.pcb.layers[layer_type][0]
+                if name==layer or unquote(name)==layer:
+                    return (int(layer_type),name)
             raise KeyError('layer {} not found'.format(layer))
         else:
             if str(layer) not in self.pcb.layers:
                 raise KeyError('layer {} not found'.format(layer))
-            self.layer_type = layer
-            self.layer = self.pcb.layers[str(layer)][0]
+            return (layer, self.pcb.layers[str(layer)][0])
+
+    def setLayer(self,layer):
+        self.layer_type, self.layer_name = self.findLayer(layer)
+        self.layer = unquote(self.layer_name)
 
     def setNetFilter(self,*nets):
         ndict = dict()
@@ -774,17 +784,23 @@ class KicadFcad:
 
         edges = []
 
+        try:
+            # get layer name for Edge.Cuts
+            _,layer = self.findLayer(44)
+        except Exception:
+            raise RuntimeError('No Edge.Cuts layer found')
+
         self._pushLog('making board...',prefix=prefix)
         self._log('making {} lines',len(self.pcb.gr_line))
         for l in self.pcb.gr_line:
-            if l.layer != 'Edge.Cuts':
+            if l.layer != layer:
                 continue
             edges.append([l.width,
                 Part.makeLine(makeVect(l.start),makeVect(l.end))])
 
         self._log('making {} arcs',len(self.pcb.gr_arc))
         for l in self.pcb.gr_arc:
-            if l.layer != 'Edge.Cuts':
+            if l.layer != layer:
                 continue
             # for gr_arc, 'start' is actual the center, and 'end' is the start
             edges.append([l.width,
@@ -793,7 +809,7 @@ class KicadFcad:
         if hasattr(self.pcb,'gr_curve'):
             self._log('making {} curves',len(self.pcb.gr_curve))
             for l in self.pcb.gr_curve:
-                if l.layer != 'Edge.Cuts':
+                if l.layer != layer:
                     continue
                 edges.append([l.width,
                     makeCurve([makeVect(p) for p in SexpList(l.pts.xy)])])
@@ -1145,9 +1161,10 @@ class KicadFcad:
             pads = []
             count += len(m.pad)
             for j,p in enumerate(m.pad):
-                if self.layer not in p.layers \
-                    and layer_match not in p.layers \
-                    and '*' not in p.layers:
+                layers = [unquote(s) for s in p.layers]
+                if self.layer not in layers \
+                    and layer_match not in layers \
+                    and '*' not in layers:
                     skip_count+=1
                     continue
 
@@ -1188,7 +1205,8 @@ class KicadFcad:
         via_skip = 0
         vias = []
         for i,v in enumerate(self.pcb.via):
-            if self.layer not in v.layers or self.filterNets(v):
+            layers = [unquote(s) for s in v.layers]
+            if self.layer not in layers or self.filterNets(v):
                 via_skip += 1
                 continue
             w = make_circle(Vector(v.size))
@@ -1266,7 +1284,7 @@ class KicadFcad:
         for s in self.pcb.segment:
             if self.filterNets(s):
                 continue
-            if s.layer == self.layer:
+            if unquote(s.layer) == self.layer:
                 if self.merge_tracks:
                     tracks[''][s.width].append(s)
                 else:
@@ -1351,7 +1369,7 @@ class KicadFcad:
 
         objs = []
         for z in self.pcb.zone:
-            if z.layer != self.layer or self.filterNets(z):
+            if unquote(z.layer) != self.layer or self.filterNets(z):
                 continue
             count = len(z.filled_polygon)
             self._pushLog('making zone {}...', z.net_name)
@@ -1465,9 +1483,12 @@ class KicadFcad:
             if not obj:
                 continue
             if shape_type=='solid':
-                ofs = offset if self.layer.startswith('F.') else -offset
+                ofs = offset if self.layer_type < 16 else -offset
                 self._place(obj,Vector(0,0,ofs))
             objs.append(obj)
+
+        if not objs:
+            return
 
         if shape_type=='solid':
             self._log("makeing solid")
@@ -1525,7 +1546,8 @@ class KicadFcad:
                 self.setLayer(layer)
                 copper = self.makeCopper(shape_type,thickness,fit_arcs=fit_arcs,
                                     holes=hole_shapes,z=z,prefix=None,fuse=fuse)
-                objs.append(copper)
+                if copper:
+                    objs.append(copper)
                 z -= z_step
         finally:
             self.setLayer(layer_save)
@@ -1583,7 +1605,7 @@ class KicadFcad:
             parts = {}
 
         for (module_idx,m) in enumerate(self.pcb.module):
-            if m.layer != self.layer:
+            if unquote(m.layer) != self.layer:
                 continue
             ref = '?'
             value = '?'
