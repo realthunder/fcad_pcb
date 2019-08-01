@@ -1491,14 +1491,14 @@ class KicadFcad:
             return
 
         if shape_type=='solid':
-            self._log("makeing solid")
+            self._log("making solid")
             obj = self._makeCompound(objs,'copper')
             self._log("done solid")
         else:
             obj = self._makeArea(objs,'copper',fit_arcs=fit_arcs)
             self.setColor(obj,'copper')
             if solid:
-                self._log("makeing solid")
+                self._log("making solid")
                 obj = self._makeSolid(obj,'copper',thickness)
                 self._log("done solid")
                 self.setColor(obj,'copper')
