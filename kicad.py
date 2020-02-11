@@ -272,7 +272,6 @@ def make_custom(size,params):
         points = SexpList(pts.xy)
         # close the polygon
         points._append(pts.xy._get(0))
-        logger.info('polyline points: {}'.format(len(points)))
     except Exception:
         raise RuntimeError('Cannot find polyline points in custom pad')
 
@@ -1104,7 +1103,8 @@ class KicadFcad:
                     w = make_oval(size+Vector(ofs,ofs))
                     ovals[min(size.x,size.y)].append(w)
                     oval_count += 1
-                elif p.drill[0]>=minSize and \
+                elif 0 in p.drill and \
+                        p.drill[0]>=minSize and \
                         (not maxSize or p.drill[0]<=maxSize):
                     w = make_circle(Vector(p.drill[0]+ofs))
                     holes[p.drill[0]].append(w)
@@ -1277,11 +1277,17 @@ class KicadFcad:
                             'pad shape {} not implemented\n'.format(shape))
 
                 w = make_shape(Vector(*p.size),p)
+
+                # kicad put pad shape offset inside drill element? Why?
+                if 'drill' in p and 'offset' in p.drill:
+                    w.translate(makeVect(p.drill.offset))
+
                 at,angle = getAt(p.at)
                 angle -= m_angle;
                 if not isZero(angle):
                     w.rotate(Vector(),Vector(0,0,1),angle)
                 w.translate(at)
+
                 if not self.merge_pads:
                     pads.append(func(w,'pad',
                         '{}#{}#{}#{}#{}'.format(i,j,p[0],ref,self.netName(p))))
