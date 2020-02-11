@@ -175,27 +175,92 @@ def make_roundrect(size,params):
     rratio = 0.25
     try:
         rratio = params.roundrect_rratio
-        if rratio >= 0.5:
+        if rratio > 0.5:
             return make_oval(size)
     except Exception:
         logger.warning('round rect pad has no rratio')
 
-    if size.x < size.y:
-        r = size.x*rratio
-    else:
-        r = size.y*rratio
+    length = min(size.x, size.y)
+    r = length*rratio
     n = Vector(0,0,1)
     sx = size.x*0.5
     sy = size.y*0.5
-    return Part.Wire([
-            Part.makeCircle(r,Vector(sx-r,sy-r),n,0,90),
-            Part.makeLine(Vector(sx-r,sy),Vector(r-sx,sy)),
-            Part.makeCircle(r,Vector(r-sx,sy-r),n,90,180),
-            Part.makeLine(Vector(-sx,sy-r),Vector(-sx,r-sy)),
-            Part.makeCircle(r,Vector(r-sx,r-sy),n,180,270),
-            Part.makeLine(Vector(r-sx,-sy),Vector(sx-r,-sy)),
-            Part.makeCircle(r,Vector(sx-r,r-sy),n,270,360),
-            Part.makeLine(Vector(sx,r-sy),Vector(sx,sy-r))])
+
+    rounds = [(r,False)]*4
+
+    if 'chamfer_ratio' in params and 'chamfer' in params:
+        ratio = params.chamfer_ratio
+        if ratio < 0.0:
+            ratio = 0.0
+        elif ratio > 0.5:
+            ratio = 0.5
+        for i,corner in enumerate(('top_right',
+                                    'top_left',
+                                    'bottom_left',
+                                    'bottom_right')):
+            if corner in params.chamfer:
+                rounds[i] = (ratio*length,True)
+
+    edges = []
+
+    r,chamfer = rounds[0]
+    pstart = Vector(sx,sy-r)
+    pt = pstart
+    pnext = Vector(sx-r,sy)
+
+    if r:
+        if not chamfer:
+            edges.append(Part.makeCircle(r,Vector(sx-r,sy-r),n,0,90))
+        else:
+            edges.append(Part.makeLine(pt, pnext))
+
+    r,chamfer = rounds[1]
+    pt = pnext
+    pnext = Vector(r-sx,sy)
+    if pt != pnext:
+        edges.append(Part.makeLine(pt,pnext))
+        pt = pnext
+    pnext = Vector(-sx,sy-r)
+
+    if r:
+        if not chamfer:
+            edges.append(Part.makeCircle(r,Vector(r-sx,sy-r),n,90,180))
+        else:
+            edges.append(Part.makeLine(pt,pnext))
+
+    r,chamfer = rounds[2]
+    pt = pnext
+    pnext = Vector(-sx,r-sy)
+    if pt != pnext:
+        edges.append(Part.makeLine(pt,pnext))
+        pt = pnext
+    pnext = Vector(r-sx,-sy)
+
+    if r:
+        if not chamfer:
+            edges.append(Part.makeCircle(r,Vector(r-sx,r-sy),n,180,270))
+        else:
+            edges.append(Part.makeLine(pt,pnext))
+
+    r,chamfer = rounds[3]
+    pt = pnext
+    pnext = Vector(sx-r,-sy)
+    if pt != pnext:
+        edges.append(Part.makeLine(pt,pnext))
+        pt = pnext
+    pnext = Vector(sx,r-sy)
+
+    if r:
+        if not chamfer:
+            edges.append(Part.makeCircle(r,Vector(sx-r,r-sy),n,270,360))
+        else:
+            edges.append(Part.makeLine(pt,pnext))
+
+    pt = pnext
+    if pt != pstart:
+        edges.append(Part.makeLine(pt,pstart))
+
+    return Part.Wire(edges)
 
 def make_custom(size,params):
     _ = size
