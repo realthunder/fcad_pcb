@@ -115,6 +115,37 @@ def make_rect(size,params=None):
     return Part.makePolygon([product(size,Vector(*v))
         for v in ((-0.5,-0.5),(0.5,-0.5),(0.5,0.5),(-0.5,0.5),(-0.5,-0.5))])
 
+def make_trapezoid(size,params):
+    pts = [product(size,Vector(*v)) \
+            for v in ((-0.5,-0.5),(0.5,-0.5),(0.5,0.5),(-0.5,0.5))]
+    try:
+        delta = params.rect_delta[0]
+        if delta:
+            # horizontal
+            idx = 1
+            length = size[1]
+        else:
+            # vertical
+            delta = params.rect_delta[1]
+            idx = 0
+            length = size[0]
+        if delta <= -length:
+            pts = pts[1:]
+            pts[0][idx] = 0.0
+        elif delta >= length:
+            pts = pts[:-1]
+            pts[-1][idx] = 0.0
+        else:
+            pts[0][idx] -= delta*0.5
+            pts[1][idx] += delta*0.5
+            pts[2][idx] -= delta*0.5
+            pts[3][idx] += delta*0.5
+    except Exception:
+        logger.warning('trapezoid pad has no rect_delta')
+
+    pts.append(pts[0])
+    return Part.makePolygon(pts)
+
 def make_circle(size,params=None):
     _ = params
     return Part.Wire(Part.makeCircle(size.x*0.5))
