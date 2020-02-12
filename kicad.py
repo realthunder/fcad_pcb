@@ -448,6 +448,11 @@ class KicadFcad:
         self.merge_vias = not debug
         self.merge_tracks = not debug
         self.zone_merge_holes = not debug
+
+        # set -1 to disable via in pads, 0 to enable as normal, >0 to use as
+        # a ratio to via radius for creating a square to simplify via
+        self.via_bound = 0
+
         self.add_feature = True
         self.part_path = None
         self.path_env = 'KICAD_CONFIG_HOME'
@@ -1306,17 +1311,21 @@ class KicadFcad:
 
         via_skip = 0
         vias = []
-        for i,v in enumerate(self.pcb.via):
-            layers = [unquote(s) for s in v.layers]
-            if self.layer not in layers or self.filterNets(v):
-                via_skip += 1
-                continue
-            w = make_circle(Vector(v.size))
-            w.translate(makeVect(v.at))
-            if not self.merge_vias:
-                vias.append(func(w,'via','{}#{}'.format(i,v.size)))
-            else:
-                vias.append(w)
+        if self.via_bound >= 0:
+            for i,v in enumerate(self.pcb.via):
+                layers = [unquote(s) for s in v.layers]
+                if self.layer not in layers or self.filterNets(v):
+                    via_skip += 1
+                    continue
+                if self.via_bound:
+                    w = make_rect(Vector(v.size*self.via_bound,v.size*self.via_bound))
+                else:
+                    w = make_circle(Vector(v.size))
+                w.translate(makeVect(v.at))
+                if not self.merge_vias:
+                    vias.append(func(w,'via','{}#{}'.format(i,v.size)))
+                else:
+                    vias.append(w)
 
         if vias:
             if self.merge_vias:
