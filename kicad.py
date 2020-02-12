@@ -444,10 +444,13 @@ class KicadFcad:
         self.sketch_constraint = True
         self.sketch_align_constraint = False
         self.merge_holes = not debug
-        self.merge_pads = not debug
         self.merge_vias = not debug
         self.merge_tracks = not debug
         self.zone_merge_holes = not debug
+
+        # merging pads may cause problem in case of overlapping edges, needs
+        # further analysis. See tests/flex.kicad_pcb
+        self.merge_pads = False
 
         # set -1 to disable via in pads, 0 to enable as normal, >0 to use as
         # a ratio to via radius for creating a square to simplify via
