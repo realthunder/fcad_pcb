@@ -459,6 +459,9 @@ class KicadFcad:
         # a ratio to via radius for creating a square to simplify via
         self.via_bound = 0
 
+        # whether to skip via hole if there is via_bound
+        self.via_skip_hole = True
+
         self.add_feature = True
         self.part_path = None
         self.path_env = 'KICAD_CONFIG_HOME'
@@ -1062,7 +1065,7 @@ class KicadFcad:
 
 
     def makeHoles(self,shape_type='wire',minSize=0,maxSize=0,
-            oval=False,prefix='',offset=0.0,npth=0,thickness=None):
+            oval=False,prefix='',offset=0.0,npth=0,thickness=None,skip_via=False):
 
         self._pushLog('making holes...',prefix=prefix)
 
@@ -1136,19 +1139,28 @@ class KicadFcad:
             self._log('oval holes: {}',oval_count)
 
         if npth<=0:
-            skip_count = 0
-            ofs = -abs(offset)
-            for v in self.pcb.via:
-                if self.filterNets(v):
-                    skip_count += 1
-                    continue
-                if v.drill>=minSize and (not maxSize or v.drill<=maxSize):
-                    w = make_circle(Vector(v.drill+ofs))
-                    holes[v.drill].append(w)
-                    w.translate(makeVect(v.at))
-                else:
-                    skip_count += 1
-            self._log('via holes: {}, skipped: {}',len(self.pcb.via),skip_count)
+            via_skip = 0
+            if skip_via or self.via_bound < 0:
+                via_skip = len(self.pcb.via)
+            else:
+                ofs = -abs(offset)
+                for v in self.pcb.via:
+                    if self.filterNets(v):
+                        via_skip += 1
+                        continue
+                    if v.drill>=minSize and (not maxSize or v.drill<=maxSize):
+                        s = v.drill+ofs
+                        if self.via_bound:
+                            s *= self.via_bound
+                            w = make_rect(Vector(s,s))
+                        else:
+                            w = make_circle(Vector(s))
+                        holes[v.drill].append(w)
+                        w.translate(makeVect(v.at))
+                    else:
+                        via_skip += 1
+            skip_count += via_skip
+            self._log('via holes: {}, skipped: {}',len(self.pcb.via),via_skip)
 
         self._log('total holes added: {}',
                 count+oval_count+len(self.pcb.via)-skip_count)
@@ -1198,8 +1210,8 @@ class KicadFcad:
         if not isinstance(holes,(Part.Feature,Part.Shape)):
             hit = False
             if self.holes_cache is not None:
-                key = '{}.{}.{}.{}.{}.{}'.format(
-                        self.add_feature,minSize,maxSize,oval,npth,offset)
+                key = '{}.{}.{}.{}.{}.{}.{}'.format(
+                        self.add_feature,minSize,maxSize,oval,npth,offset,self.via_bound)
                 doc = getActiveDoc();
                 if self.add_feature and self.active_doc_uuid!=doc.Uid:
                     self.holes_cache.clear()
@@ -1317,7 +1329,9 @@ class KicadFcad:
 
         via_skip = 0
         vias = []
-        if self.via_bound >= 0:
+        if self.via_bound < 0:
+            via_skip = len(self.pcb.via)
+        else:
             for i,v in enumerate(self.pcb.via):
                 layers = [unquote(s) for s in v.layers]
                 if self.layer not in layers or self.filterNets(v):
@@ -1690,7 +1704,8 @@ class KicadFcad:
                 # make plated through holes with inward offset
                 drills = self.makeHoles(shape_type='solid',prefix=None,
                         thickness=board_thickness+6*thickness,
-                        oval=True,npth=-1,offset=thickness)
+                        oval=True,npth=-1,offset=thickness,
+                        skip_via=self.via_skip_hole and self.via_bound)
                 if drills:
                     self._place(drills,FreeCAD.Vector(0,0,-thickness*2))
                     objs = self._makeCut(objs,drills,'coppers')
