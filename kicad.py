@@ -278,7 +278,8 @@ def make_custom(size,params):
     except Exception:
         raise RuntimeError('Cannot find polyline points in custom pad')
 
-    wire = Part.makePolygon([makeVect(p) for p in points])
+    # KiCAD polygon runs in clockwise, but FreeCAD wants CCW, so must reverse.
+    wire = Part.makePolygon([makeVect(p) for p in reversed(points)])
     if width:
         wire = Path.Area(Offset=width*0.5).add(wire).getShape()
     return wire
@@ -450,10 +451,7 @@ class KicadFcad:
         self.merge_vias = not debug
         self.merge_tracks = not debug
         self.zone_merge_holes = not debug
-
-        # merging pads may cause problem in case of overlapping edges, needs
-        # further analysis. See tests/flex.kicad_pcb
-        self.merge_pads = False
+        self.merge_pads = not debug
 
         # set -1 to disable via in pads, 0 to enable as normal, >0 to use as
         # a ratio to via radius for creating a square to simplify via
