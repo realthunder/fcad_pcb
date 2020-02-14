@@ -464,6 +464,8 @@ class KicadFcad:
         self.part_path = None
         self.path_env = 'KICAD_CONFIG_HOME'
         self.hole_size_offset = 0.0001
+        self.pad_inflate = 0
+        self.zone_inflate = 0
         self.nets = []
         if filename is None:
             filename = '/home/thunder/pwr.kicad_pcb'
@@ -1250,7 +1252,7 @@ class KicadFcad:
         self._pushLog('making pads...',prefix=prefix)
 
         def _wire(obj,name,label=None,fill=False):
-            return self._makeWires(obj,name,fill=fill,label=label)
+            return self._makeWires(obj,name,fill=fill,label=label,offset=self.pad_inflate)
 
         def _face(obj,name,label=None):
             return _wire(obj,name,label,True)
@@ -1473,17 +1475,19 @@ class KicadFcad:
             # related to some setup parameter? I am guessing this is half the
             # zone.min_thickness setting here.
 
+            offset = self.zone_inflate + z.min_thickness
+
             if not zone_holes or (
               self.add_feature and self.make_sketch and self.zone_merge_holes):
                 obj = [obj]+zone_holes
             elif zone_holes:
                 obj = (self._makeWires(obj,'zone_outline', label=z.net_name),
                        self._makeWires(zone_holes,'zone_hole',label=z.net_name))
-                return self._makeArea(obj,'zone',offset=z.min_thickness*0.5,
+                return self._makeArea(obj,'zone',offset=offset,
                         op=1, fill=fill,label=z.net_name)
 
             return self._makeWires(obj,'zone',fill=fill,
-                            offset=z.min_thickness*0.5,label=z.net_name)
+                            offset=offset,label=z.net_name)
 
 
         def _face(obj):
