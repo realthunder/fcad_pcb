@@ -267,22 +267,35 @@ def make_roundrect(size,params):
 
 def make_custom(size,params):
     _ = size
-    width = 0
-    try:
-        pts = params.primitives.gr_poly.pts
-        if 'width' in pts:
-            width = pts.width
-        points = SexpList(pts.xy)
-        # close the polygon
-        points._append(pts.xy._get(0))
-    except Exception:
-        raise RuntimeError('Cannot find polyline points in custom pad')
+    wires = []
+    for key in params.primitives:
+        item = getattr(params.primitives,key)
+        if key == 'gr_poly':
+            points = SexpList(item.pts.xy)
+            # close the polygon
+            points._append(item.pts.xy._get(0))
+            # KiCAD polygon runs in clockwise, but FreeCAD wants CCW, so must reverse.
+            wire = Part.makePolygon([makeVect(p) for p in reversed(points)])
+        elif key == 'gr_line':
+            wire = Part.makeLine(makeVect(item.start),makeVect(item.end))
+        elif key == 'gr_arc':
+            wire = makeArc(makeVect(item.start),makeVect(item.end),item.angle)
+        elif key == 'gr_curve':
+            wire = makeCurve([makeVect(p) for p in SexpList(item.pts.xy)])
+        else:
+            logger.warning('Unknown primitive {} in custom pad', key)
+            continue
 
-    # KiCAD polygon runs in clockwise, but FreeCAD wants CCW, so must reverse.
-    wire = Part.makePolygon([makeVect(p) for p in reversed(points)])
-    if width:
-        wire = Path.Area(Offset=width*0.5).add(wire).getShape()
-    return wire
+        width = getattr(item,'width',0)
+        if width:
+            wire = Path.Area(Offset=width*0.5).add(wire).getShape()
+        wires.append(wire)
+
+    if not wires:
+        return
+    if len(wires) == 1:
+        return wires[0]
+    return Part.makeCompound(wires)
 
 
 def makeThickLine(p1,p2,width):
@@ -1300,6 +1313,8 @@ class KicadFcad:
                             'pad shape {} not implemented\n'.format(shape))
 
                 w = make_shape(Vector(*p.size),p)
+                if not w:
+                    continue
 
                 # kicad put pad shape offset inside drill element? Why?
                 if 'drill' in p and 'offset' in p.drill:
