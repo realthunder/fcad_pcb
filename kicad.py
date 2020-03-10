@@ -265,38 +265,61 @@ def make_roundrect(size,params):
 
     return Part.Wire(edges)
 
-def make_custom(size,params):
+def make_gr_poly(params):
+    points = SexpList(params.pts.xy)
+    # close the polygon
+    points._append(params.pts.xy._get(0))
+    # KiCAD polygon runs in clockwise, but FreeCAD wants CCW, so must reverse.
+    return Part.makePolygon([makeVect(p) for p in reversed(points)])
+
+def make_gr_line(params):
+    return Part.makeLine(makeVect(params.start),makeVect(params.end))
+
+def make_gr_arc(params):
+    return  makeArc(makeVect(params.start),makeVect(params.end),params.angle)
+
+def make_gr_curve(params):
+    return makeCurve([makeVect(p) for p in SexpList(params.pts.xy)])
+
+def make_gr_circle(params, width=0):
+    center = makeVect(params.center)
+    end = makeVect(params.end)
+    r = center.distanceToPoint(end)
+    if not width or r <= width*0.5:
+        return Part.makeCircle(r+width*0.5, center)
+    return Part.makeCompound([Part.Wire(Part.makeCircle(r+width*0.5,center)),
+                              Part.Wire(Part.makeCircle(r-width*0.5,center,Vector(0,0,-1)))])
+
+def makePrimitve(key, params):
+    try:
+        width = getattr(params,'width',0)
+        if width and key == 'gr_circle':
+            return make_gr_circle(params, width), 0
+        else:
+            make_shape = globals()['make_{}'.format(key)]
+            return make_shape(params), width
+    except KeyError:
+        logger.warning('Unknown primitive {} in custom pad'.format(key))
+        return None, None
+
+def make_custom(size, params):
     _ = size
     wires = []
     for key in params.primitives:
-        item = getattr(params.primitives,key)
-        if key == 'gr_poly':
-            points = SexpList(item.pts.xy)
-            # close the polygon
-            points._append(item.pts.xy._get(0))
-            # KiCAD polygon runs in clockwise, but FreeCAD wants CCW, so must reverse.
-            wire = Part.makePolygon([makeVect(p) for p in reversed(points)])
-        elif key == 'gr_line':
-            wire = Part.makeLine(makeVect(item.start),makeVect(item.end))
-        elif key == 'gr_arc':
-            wire = makeArc(makeVect(item.start),makeVect(item.end),item.angle)
-        elif key == 'gr_curve':
-            wire = makeCurve([makeVect(p) for p in SexpList(item.pts.xy)])
+        wire,width = makePrimitve(key, getattr(params.primitives, key))
+        if not width:
+            if isinstance(wire, Part.Edge):
+                wire = Part.Wire(wire)
+            wires.append(wire)
         else:
-            logger.warning('Unknown primitive {} in custom pad', key)
-            continue
-
-        width = getattr(item,'width',0)
-        if width:
-            wire = Path.Area(Offset=width*0.5).add(wire).getShape()
-        wires.append(wire)
+            wire = Path.Area(Thicken=wire.isClosed(),Offset=width*0.5).add(wire).getShape()
+            wires += wire.Wires
 
     if not wires:
         return
     if len(wires) == 1:
         return wires[0]
     return Part.makeCompound(wires)
-
 
 def makeThickLine(p1,p2,width):
     length = p1.distanceToPoint(p2)
@@ -913,28 +936,17 @@ class KicadFcad:
             raise RuntimeError('No Edge.Cuts layer found')
 
         self._pushLog('making board...',prefix=prefix)
-        self._log('making {} lines',len(self.pcb.gr_line))
-        for l in self.pcb.gr_line:
-            if l.layer != layer:
-                continue
-            edges.append([l.width,
-                Part.makeLine(makeVect(l.start),makeVect(l.end))])
-
-        self._log('making {} arcs',len(self.pcb.gr_arc))
-        for l in self.pcb.gr_arc:
-            if l.layer != layer:
-                continue
-            # for gr_arc, 'start' is actual the center, and 'end' is the start
-            edges.append([l.width,
-                makeArc(makeVect(l.start),makeVect(l.end),l.angle)])
-
-        if hasattr(self.pcb,'gr_curve'):
-            self._log('making {} curves',len(self.pcb.gr_curve))
-            for l in self.pcb.gr_curve:
+        for tp in 'line','arc','circle','curve','poly':
+            name = 'gr_' + tp
+            primitives = getattr(self.pcb, name, None)
+            if not primitives:
+                continue;
+            self._log('making {} {}s',len(primitives), tp)
+            make_shape = globals()['make_{}'.format(name)]
+            for l in primitives:
                 if l.layer != layer:
                     continue
-                edges.append([l.width,
-                    makeCurve([makeVect(p) for p in SexpList(l.pts.xy)])])
+                edges.append([getattr(l,'width',1e-7), make_shape(l)])
 
         if not edges:
             self._popLog('no board edges found')
