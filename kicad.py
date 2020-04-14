@@ -1493,15 +1493,16 @@ class KicadFcad:
 
         tracks = defaultdict(lambda: defaultdict(list))
         count = 0
-        for s in self.pcb.segment:
-            if self.filterNets(s):
-                continue
-            if unquote(s.layer) == self.layer:
-                if self.merge_tracks:
-                    tracks[''][s.width].append(s)
-                else:
-                    tracks[self.netName(s)][s.width].append(s)
-                count += 1
+        for tp,ss in (('segment',self.pcb.segment), ('arc',getattr(self.pcb, 'arc', []))):
+            for s in ss:
+                if self.filterNets(s):
+                    continue
+                if unquote(s.layer) == self.layer:
+                    if self.merge_tracks:
+                        tracks[''][s.width].append((tp,s))
+                    else:
+                        tracks[self.netName(s)][s.width].append((tp,s))
+                    count += 1
 
         objs = []
         i = 0
@@ -1511,13 +1512,27 @@ class KicadFcad:
                         len(ss),name,width,i,count)
                 i+=len(ss)
                 edges = []
-                for s in ss:
-                    if s.start != s.end:
-                        edges.append(Part.makeLine(
-                            makeVect(s.start),makeVect(s.end)))
+                for tp,s in ss:
+                    if tp == 'segment':
+                        if s.start != s.end:
+                            edges.append(Part.makeLine(
+                                makeVect(s.start),makeVect(s.end)))
+                        else:
+                            self._log('Line (Track) through identical points {}',
+                                    s.start, level="warning")
+                    elif tp == 'arc':
+                        if s.start == s.mid:
+                            self._log('Arc (Track) with invalid point {}', s, level="warning")
+                        elif s.start != s.end:
+                            edges.append(Part.ArcOfCircle(
+                                makeVect(s.end), makeVect(s.mid), makeVect(s.start)).toShape())
+                        else:
+                            start = makeVect(s.start)
+                            middle = makeVect(s.mid)
+                            r = start.distanceToPoint(middle)
+                            edges.append(Part.makeCircle(r, (middle-start)/2))
                     else:
-                        self._log('Line (Track) through identical points {}',
-                                s.start, level="warning")
+                        self._log('Unknown track type: {}', tp, level='warning')
                 if self.merge_tracks:
                     label = '{}'.format(width)
                 else:
