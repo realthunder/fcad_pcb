@@ -302,25 +302,6 @@ def makePrimitve(key, params):
         logger.warning('Unknown primitive {} in custom pad'.format(key))
         return None, None
 
-def make_custom(size, params):
-    _ = size
-    wires = []
-    for key in params.primitives:
-        wire,width = makePrimitve(key, getattr(params.primitives, key))
-        if not width:
-            if isinstance(wire, Part.Edge):
-                wire = Part.Wire(wire)
-            wires.append(wire)
-        else:
-            wire = Path.Area(Thicken=wire.isClosed(),Offset=width*0.5).add(wire).getShape()
-            wires += wire.Wires
-
-    if not wires:
-        return
-    if len(wires) == 1:
-        return wires[0]
-    return Part.makeCompound(wires)
-
 def makeThickLine(p1,p2,width):
     length = p1.distanceToPoint(p2)
     line = make_oval(Vector(length+2*width,2*width))
@@ -488,6 +469,7 @@ class KicadFcad:
         self.merge_tracks = not debug
         self.zone_merge_holes = not debug
         self.merge_pads = not debug
+        self.arc_fit_accuracy = 0.0005
 
         # set -1 to disable via in pads, 0 to enable as normal, >0 to use as
         # a ratio to via radius for creating a square to simplify via
@@ -811,6 +793,7 @@ class KicadFcad:
             else:
                 ret = self._makeObject('Path::FeatureArea',
                                         '{}_area'.format(name),label)
+                ret.Accuracy = self.arc_fit_accuracy
                 ret.Sources = obj
                 ret.Operation = op
                 ret.Fill = fill
@@ -825,7 +808,8 @@ class KicadFcad:
 
             recomputeObj(ret)
         else:
-            ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0)
+            ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0,
+                    Accurarcy=self.arc_fit_accuracy)
             if workplane:
                 ret.setPlane(self.work_plane)
             for o in obj:
@@ -1318,6 +1302,23 @@ class KicadFcad:
         objs = (self._makeCompound(objs,name,label=label),holes)
         return self._makeArea(objs,name,op=1,label=label,fit_arcs=fit_arcs)
 
+    def _makeCustomPad(self, params):
+        wires = []
+        for key in params.primitives:
+            wire,width = makePrimitve(key, getattr(params.primitives, key))
+            if not width:
+                if isinstance(wire, Part.Edge):
+                    wire = Part.Wire(wire)
+                wires.append(wire)
+            else:
+                wire = Path.Area(Accuracy=self.arc_fit_accuracy,Thicken=wire.isClosed(),
+                            Offset=width*0.5).add(wire).getShape()
+                wires += wire.Wires
+        if not wires:
+            return
+        if len(wires) == 1:
+            return wires[0]
+        return Part.makeCompound(wires)
 
     def makePads(self,shape_type='face',thickness=0.05,holes=False,
             fit_arcs=True,prefix=''):
@@ -1366,13 +1367,16 @@ class KicadFcad:
 
                 shape = p[2]
 
-                try:
-                    make_shape = globals()['make_{}'.format(shape)]
-                except KeyError:
-                    raise NotImplementedError(
-                            'pad shape {} not implemented\n'.format(shape))
+                if shape == 'custom':
+                    w = self._makeCustomPad(p)
+                else:
+                    try:
+                        make_shape = globals()['make_{}'.format(shape)]
+                    except KeyError:
+                        raise NotImplementedError(
+                                'pad shape {} not implemented\n'.format(shape))
+                    w = make_shape(Vector(*p.size),p)
 
-                w = make_shape(Vector(*p.size),p)
                 if not w:
                     continue
 
