@@ -560,6 +560,22 @@ class KicadFcad:
         self.layer_type, self.layer_name = self.findLayer(layer)
         self.layer = unquote(self.layer_name)
 
+    def layerOffsets(self, thickness=None):
+        if not thickness:
+            thickness = self.pcb.general.thickness
+        offsets = dict()
+        coppers = [ (31-int(t),self.pcb.layers[t][0]) for t in self.pcb.layers if int(t)<=31]
+        coppers.sort(key=lambda x : x[0])
+        if len(coppers) == 1:
+            offsets[unquote(coppers[0][1])] = 0
+            return offsets
+        step = thickness / (len(coppers)-1)
+        offset = 0.0
+        for _,name in coppers:
+            offsets[unquote(name)] = offset
+            offset += step
+        return offsets
+
     def setNetFilter(self,*nets):
         ndict = dict()
         nset = set()
@@ -1090,7 +1106,8 @@ class KicadFcad:
 
 
     def makeHoles(self,shape_type='wire',minSize=0,maxSize=0,
-            oval=False,prefix='',offset=0.0,npth=0,thickness=None,skip_via=False):
+            oval=False,prefix='',offset=0.0,npth=0,skip_via=False,
+            board_thickness=None,extra_thickness=0.0):
 
         self._pushLog('making holes...',prefix=prefix)
 
@@ -1163,35 +1180,54 @@ class KicadFcad:
         if oval:
             self._log('oval holes: {}',oval_count)
 
+        blind_holes = defaultdict(list)
         if npth<=0:
             via_skip = 0
             if skip_via or self.via_bound < 0:
                 via_skip = len(self.pcb.via)
             else:
+                thickness = board_thickness
+                if not thickness:
+                    thickness = self.pcb.general.thickness
+                layer_offsets = self.layerOffsets(thickness)
                 ofs = -abs(offset)
                 for v in self.pcb.via:
                     if self.filterNets(v):
                         via_skip += 1
                         continue
+
                     if v.drill>=minSize and (not maxSize or v.drill<=maxSize):
+
+                        z_offsets = [layer_offsets[unquote(n)] for n in v.layers]
+                        pos = makeVect(v.at)
+                        pos.z = min(z_offsets)
+                        dist = max(z_offsets) - pos.z
+
                         s = v.drill+ofs
                         if self.via_bound:
                             s *= self.via_bound
                             w = make_rect(Vector(s,s))
                         else:
                             w = make_circle(Vector(s))
-                        holes[v.drill].append(w)
-                        w.translate(makeVect(v.at))
+                        w.translate(pos)
+                        if dist < thickness-0.001:
+                            blind_holes[(pos.z,dist)].append(w)
+                        else:
+                            holes[v.drill].append(w)
                     else:
                         via_skip += 1
             skip_count += via_skip
             self._log('via holes: {}, skipped: {}',len(self.pcb.via),via_skip)
 
+            if blind_holes and shape_type != 'solid':
+                self._log('skip blind via holes: {}',len(blind_holes))
+                blind_holes = None
+
         self._log('total holes added: {}',
                 count+oval_count+len(self.pcb.via)-skip_count)
 
         objs = []
-        if holes or ovals:
+        if blind_holes or holes or ovals:
             if self.merge_holes:
                 for o in ovals.values():
                     objs += o
@@ -1212,16 +1248,28 @@ class KicadFcad:
             else:
                 label='th'
 
-            if shape_type == 'solid':
-                if not thickness:
-                    thickness = self.pcb.general.thickness+0.02
+            if not objs:
+                self._popLog('no holes')
+                return
+
+            if shape_type != 'solid':
+                objs = self._makeCompound(objs,'holes',label=label)
+            else:
+                if not board_thickness:
+                    board_thickness = self.pcb.general.thickness+0.02
                     pos = -0.01
                 else:
                     pos = 0.0
+                thickness = board_thickness + extra_thickness
                 objs = self._makeSolid(objs,'holes',thickness,label=label)
+                if blind_holes:
+                    objs = [objs]
+                    for (_,d),o in blind_holes.items():
+                        if npth >= -1:
+                            d += extra_thickness
+                        objs.append(self._makeSolid(func(o,'blind'),'holes',d,label=label))
+                    objs = self._makeCompound(objs,'holes',label=label)
                 self._place(objs,FreeCAD.Vector(0,0,pos))
-            else:
-                objs = self._makeCompound(objs,'holes',label=label)
 
         self._popLog('holes done')
         return objs
@@ -1360,8 +1408,10 @@ class KicadFcad:
             via_skip = len(self.pcb.via)
         else:
             for i,v in enumerate(self.pcb.via):
-                layers = [unquote(s) for s in v.layers]
-                if self.layer not in layers or self.filterNets(v):
+                layers = [self.findLayer(s)[0] for s in v.layers]
+                if self.layer_type < min(layers)\
+                        or self.layer_type > max(layers)\
+                        or self.filterNets(v):
                     via_skip += 1
                     continue
                 if self.via_bound:
@@ -1719,7 +1769,7 @@ class KicadFcad:
         if shape_type=='solid' and fuse:
             # make copper for plated through holes
             hole_coppers = self.makeHoles(shape_type='solid',prefix=None,
-                oval=True,npth=-1,thickness=board_thickness+thickness)
+                oval=True,npth=-2,board_thickness=board_thickness,extra_thickness=thickness)
             if hole_coppers:
                 self.setColor(hole_coppers,'copper')
                 self._place(hole_coppers,FreeCAD.Vector(0,0,-thickness*0.5))
@@ -1732,11 +1782,11 @@ class KicadFcad:
             if holes:
                 # make plated through holes with inward offset
                 drills = self.makeHoles(shape_type='solid',prefix=None,
-                        thickness=board_thickness+6*thickness,
+                        board_thickness=board_thickness,extra_thickness=4*thickness,
                         oval=True,npth=-1,offset=thickness,
                         skip_via=self.via_skip_hole and self.via_bound)
                 if drills:
-                    self._place(drills,FreeCAD.Vector(0,0,-thickness*2))
+                    self._place(drills,FreeCAD.Vector(0,0,-thickness))
                     objs = self._makeCut(objs,drills,'coppers')
                     self.setColor(objs,'copper')
 
