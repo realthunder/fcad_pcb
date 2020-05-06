@@ -1338,7 +1338,10 @@ class KicadFcad:
         except KeyError:
             raise ValueError('invalid shape type: {}'.format(shape_type))
 
-        layer_match = '*.{}'.format(self.layer.split('.')[-1])
+        if self.layer_type <= 31:
+            layer_match = '*.Cu'
+        else:
+            layer_match = '*.{}'.format(self.layer.split('.')[-1])
 
         objs = []
 
@@ -1358,6 +1361,7 @@ class KicadFcad:
                 if self.layer not in layers \
                     and layer_match not in layers \
                     and '*' not in layers:
+                    self._log('skip layer {}, {}, {}',self.layer, layer_match, layers)
                     skip_count+=1
                     continue
 
