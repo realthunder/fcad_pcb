@@ -37,6 +37,14 @@ pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>)
 pcb.make(copper_thickness=0.035, board_thickness=1.53, combo=False, fuseCoppers=True )
 ```
 
+* supply copper thickness per layer, pass a `dictionary` instead. Use either
+  integer (0~31, 0 being the front and 31 the back), or layer name for key. Key
+  `None` can be used for default thickness.
+```python
+pcb.make(copper_thickness={None:0.05, 0:0.04, 'B.Cu':0.09}, board_thickness=1.53, combo=False, fuseCoppers=True)
+```
+
+
 - generating single copper layer
 
 ```python
@@ -63,8 +71,9 @@ pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>, add_feature=False)
 pcb.add_feature = False
 
 # All the above makeXXX() calls now returns a shape without creating any features
-# For example, if you want the complete fused copper layers
-coppers = pcb.makeCoppers(shape_type='solid',holes=True,fuse=True)
+# For example, if you want the complete fused copper layers. Note 'thickness' can
+# be a dictionary for per layer thickness
+coppers = pcb.makeCoppers(shape_type='solid',holes=True,fuse=True,thickness=0.05)
 Part.show(coppers)
 ```
 

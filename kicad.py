@@ -1751,9 +1751,24 @@ class KicadFcad:
         layer_save = self.layer
         objs = []
         layers = []
+        thicknesses = []
         for i in range(0,32):
             if str(i) in self.pcb.layers:
                 layers.append(i)
+                if not hasattr(thickness,'get'):
+                    thicknesses.append(float(thickness))
+                layer = self.pcb.layers[str(i)]
+                for key in (i, str(i), layer, unquote(layer), None, ''):
+                    try:
+                        thicknesses.append(float(thickness.get(key)))
+                        break
+                    except Exception:
+                        pass
+                if not len(layers) == len(thicknesses):
+                    raise RuntimeError('No copper thickness found for layer ' % self.pcb.layers[str(i)])
+
+        thickness = max(thicknesses)
+
         if not layers:
             raise ValueError('no copper layer found')
 
@@ -1764,7 +1779,7 @@ class KicadFcad:
         if len(layers) == 1:
             z_step = 0
         else:
-            z_step = (z+thickness)/(len(layers)-1)
+            z_step = (z+thicknesses[-1])/(len(layers)-1)
 
         if not holes:
             hole_shapes = None
@@ -1775,9 +1790,9 @@ class KicadFcad:
             hole_shapes = self._cutHoles(None,holes,None)
 
         try:
-            for layer in layers:
+            for layer,t in zip(layers, thicknesses):
                 self.setLayer(layer)
-                copper = self.makeCopper(shape_type,thickness,fit_arcs=fit_arcs,
+                copper = self.makeCopper(shape_type,t,fit_arcs=fit_arcs,
                                     holes=hole_shapes,z=z,prefix=None,fuse=fuse)
                 if copper:
                     objs.append(copper)
