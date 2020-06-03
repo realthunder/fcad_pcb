@@ -10,7 +10,7 @@ And finally it can **generate solid tracks, pads and plated drills to enable FEM
 
 ## Installation
 
-**fcad_pcb** is written in Python, and relies on **FreeCAD 0.17** core to work properly.
+**fcad_pcb** is written in Python, and requires **FreeCAD 0.17** or later to work properly.
 
 Clone this repo into your freecad macro directory. 
 After clone, cd to fcad_pcb, and checkout the submodules
@@ -94,4 +94,4 @@ Note that there is a **sample board** to play with inside the repo:
 ![Full Board Loaded in FC for FEM](screenshots/fcad_pcb-generating-for-FEM.gif?raw=true "Full Board Loaded in FC for FEM")
 
 ### Requirements
-- FreeCAD 0.17, FreeCAD 0.18
+- FreeCAD 0.17, FreeCAD 0.18, FreeCAD 0.19
