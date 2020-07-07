@@ -290,6 +290,11 @@ def make_gr_circle(params, width=0):
     return Part.makeCompound([Part.Wire(Part.makeCircle(r+width*0.5,center)),
                               Part.Wire(Part.makeCircle(r-width*0.5,center,Vector(0,0,-1)))])
 
+def make_gr_rect(params):
+    start = makeVect(params.start)
+    end = makeVect(params.end)
+    return Part.makePolygon([start, Vector(start.x, end.y), end, Vector(end.x, start.y), start])
+
 def makePrimitve(key, params):
     try:
         width = getattr(params,'width',0)
@@ -936,17 +941,18 @@ class KicadFcad:
             raise RuntimeError('No Edge.Cuts layer found')
 
         self._pushLog('making board...',prefix=prefix)
-        for tp in 'line','arc','circle','curve','poly':
+        for tp in 'line','arc','circle','curve','poly','rect':
             name = 'gr_' + tp
             primitives = getattr(self.pcb, name, None)
             if not primitives:
                 continue;
+            primitives = SexpList(primitives)
             self._log('making {} {}s',len(primitives), tp)
             make_shape = globals()['make_{}'.format(name)]
             for l in primitives:
                 if l.layer != layer:
                     continue
-                edges.append([getattr(l,'width',1e-7), make_shape(l)])
+                edges += [[getattr(l,'width',1e-7), e] for e in make_shape(l).Edges]
 
         if not edges:
             self._popLog('no board edges found')
