@@ -111,7 +111,7 @@ def product(v1,v2):
     return Vector(v1.x*v2.x,v1.y*v2.y,v1.z*v2.z)
 
 def make_rect(size,params=None):
-    _ = params 
+    _ = params
     return Part.makePolygon([product(size,Vector(*v))
         for v in ((-0.5,-0.5),(0.5,-0.5),(0.5,0.5),(-0.5,0.5),(-0.5,-0.5))])
 
@@ -503,6 +503,7 @@ class KicadFcad:
                 'copper':{0:makeColor(200,117,51)},
         }
         self.layer_type = 0
+        self.layer_match = None
 
         for key,value in iteritems(kwds):
             if not hasattr(self,key):
@@ -546,6 +547,10 @@ class KicadFcad:
     def setLayer(self,layer):
         self.layer_type, self.layer_name = self.findLayer(layer)
         self.layer = unquote(self.layer_name)
+        if self.layer_type <= 31:
+            self.layer_match = '*.Cu'
+        else:
+            self.layer_match = '*.{}'.format(self.layer.split('.')[-1])
 
     def layerOffsets(self, thickness=None):
         if not thickness:
@@ -593,6 +598,23 @@ class KicadFcad:
             return self._nets and self.getNet(p) not in self._nets
         except Exception:
             return bool(self._nets)
+
+    def filterLayer(self,p):
+        try:
+            layers = [unquote(s) for s in p.layers]
+        except Exception:
+            layers = []
+        if hasattr(p, 'layer'):
+            layers.append(unquote(p.layer))
+        if not layers:
+            self._log('no layers specified', level='warning')
+            return True
+        if self.layer not in layers \
+                and self.layer_match not in layers \
+                and '*' not in layers:
+            self._log('skip layer {}, {}, {}',
+                    self.layer, self.layer_match, layers, level='log')
+            return True
 
     def netName(self,p):
         try:
@@ -1344,11 +1366,6 @@ class KicadFcad:
         except KeyError:
             raise ValueError('invalid shape type: {}'.format(shape_type))
 
-        if self.layer_type <= 31:
-            layer_match = '*.Cu'
-        else:
-            layer_match = '*.{}'.format(self.layer.split('.')[-1])
-
         objs = []
 
         count = 0
@@ -1363,15 +1380,7 @@ class KicadFcad:
             pads = []
             count += len(m.pad)
             for j,p in enumerate(m.pad):
-                layers = [unquote(s) for s in p.layers]
-                if self.layer not in layers \
-                    and layer_match not in layers \
-                    and '*' not in layers:
-                    self._log('skip layer {}, {}, {}',self.layer, layer_match, layers)
-                    skip_count+=1
-                    continue
-
-                if self.filterNets(p):
+                if self.filterNets(p) or self.filterLayer(p):
                     skip_count+=1
                     continue
 
@@ -1608,7 +1617,7 @@ class KicadFcad:
 
         objs = []
         for z in self.pcb.zone:
-            if unquote(z.layer) != self.layer or self.filterNets(z):
+            if self.filterNets(z) or self.filterLayer(z):
                 continue
             count = len(z.filled_polygon)
             self._pushLog('making zone {}...', z.net_name)
@@ -1639,7 +1648,7 @@ class KicadFcad:
                 # function is used to recursively discover those holes, and
                 # cancel out those '=' double edges, which will surely cause
                 # problem if left alone. The algorithm assumes we start with a
-                # point of the outer polygon. 
+                # point of the outer polygon.
                 def build(start,end):
                     results = []
                     while start<end:
