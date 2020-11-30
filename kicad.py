@@ -836,7 +836,7 @@ class KicadFcad:
             recomputeObj(ret)
         else:
             ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0,
-                    Accurarcy=self.arc_fit_accuracy)
+                    Accuracy=self.arc_fit_accuracy)
             if workplane:
                 ret.setPlane(self.work_plane)
             for o in obj:
