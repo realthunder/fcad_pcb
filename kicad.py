@@ -1590,7 +1590,7 @@ class KicadFcad:
             # related to some setup parameter? I am guessing this is half the
             # zone.min_thickness setting here.
 
-            offset = self.zone_inflate + z.min_thickness
+            offset = self.zone_inflate + z.min_thickness*0.5
 
             if not zone_holes or (
               self.add_feature and self.make_sketch and self.zone_merge_holes):
