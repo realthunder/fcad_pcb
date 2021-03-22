@@ -1966,6 +1966,9 @@ class KicadFcad:
 
         self._pushLog('making pcb...',prefix='')
 
+        if combo > 1:
+            fuseCoppers = True
+
         objs = []
         objs.append(self.makeBoard(prefix=None,thickness=board_thickness))
 
@@ -1986,7 +1989,10 @@ class KicadFcad:
             layer = self.layer
             try:
                 self.layer = None
-                objs = self._makeCompound(objs,'pcb')
+                if combo > 1:
+                    objs = self._makeFuse(objs,'pcb')
+                else:
+                    objs = self._makeCompound(objs,'pcb')
                 if self.add_feature and load_parts:
                     try:
                         objs.ViewObject.SelectionStyle = 1
