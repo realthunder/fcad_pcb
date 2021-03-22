@@ -1495,7 +1495,7 @@ class KicadFcad:
         def _line(edges,label,offset=0,fill=False):
             wires = findWires(edges)
             return self._makeWires(wires,'track', offset=offset,
-                    fill=fill, label=label, workplane=True)
+                    fill=fill, label=label, workplane=True, fit_arcs=fit_arcs)
 
         def _wire(edges,label,fill=False):
             return _line(edges,label,width*0.5,fill)
