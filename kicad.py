@@ -941,7 +941,7 @@ class KicadFcad:
 
 
     def _place(self,obj,pos,angle=None):
-        if not self.add_feature:
+        if not obj.isDerivedFrom('App::DocumentObject'):
             if angle:
                 obj.rotate(Vector(),Vector(0,0,1),angle)
             obj.translate(pos)
@@ -950,35 +950,37 @@ class KicadFcad:
             obj.Placement = Placement(pos,r)
             obj.purgeTouched()
 
-
-    def makeBoard(self,shape_type='solid',thickness=None,fit_arcs=True,
-            holes=True, minHoleSize=0,ovalHole=True,prefix=''):
-
-        edges = []
-
+    def _makeEdgeCuts(self, sexp, ctx, wires, non_closed, at=None):
         try:
             # get layer name for Edge.Cuts
             _,layer = self.findLayer(44)
         except Exception:
             raise RuntimeError('No Edge.Cuts layer found')
 
-        self._pushLog('making board...',prefix=prefix)
+        edges = []
+
+        if at:
+            at, angle = getAt(at)
+        else:
+            angle = None
+
         for tp in 'line','arc','circle','curve','poly','rect':
-            name = 'gr_' + tp
-            primitives = getattr(self.pcb, name, None)
+            name = ctx + '_' + tp
+            primitives = getattr(sexp, name, None)
             if not primitives:
                 continue;
             primitives = SexpList(primitives)
             self._log('making {} {}s',len(primitives), tp)
-            make_shape = globals()['make_{}'.format(name)]
+            make_shape = globals()['make_gr_{}'.format(tp)]
             for l in primitives:
                 if l.layer != layer:
                     continue
-                edges += [[getattr(l,'width',1e-7), e] for e in make_shape(l).Edges]
-
-        if not edges:
-            self._popLog('no board edges found')
-            return
+                shape = make_shape(l)
+                if angle:
+                    shape.rotate(Vector(),Vector(0,0,1),angle)
+                if at:
+                    shape.translate(at)
+                edges += [[getattr(l,'width',1e-7), e] for e in shape.Edges]
 
         # The line width in edge cuts are important. When milling, the line
         # width can represent the diameter of the drill bits to use. The user
@@ -994,9 +996,6 @@ class KicadFcad:
             e.fixTolerance(w)
             info += [e.firstVertex().Point,e.lastVertex().Point]
 
-        non_closed = defaultdict(list)
-
-        wires = []
         while edges:
             w,e,pstart,pend = edges.pop(-1)
             wstart = wend = w
@@ -1052,6 +1051,24 @@ class KicadFcad:
             else:
                 for w,e in elist:
                     non_closed[w].append(e)
+
+    def makeBoard(self,shape_type='solid',thickness=None,fit_arcs=True,
+            holes=True, minHoleSize=0,ovalHole=True,prefix=''):
+
+        non_closed = defaultdict(list)
+        wires = []
+
+        self._pushLog('making board...',prefix=prefix)
+        self._makeEdgeCuts(self.pcb, 'gr', wires, non_closed)
+
+        self._pushLog('checking footprints...',prefix=prefix)
+        for m in self.pcb.module:
+            self._makeEdgeCuts(m, 'fp', wires, non_closed, m.at)
+        self._popLog()
+
+        if not wires and not non_closed:
+            self._popLog('no board edges found')
+            return
 
         if not thickness:
             thickness = self.pcb.general.thickness
@@ -1354,10 +1371,28 @@ class KicadFcad:
         self._pushLog('making pads...',prefix=prefix)
 
         def _wire(obj,name,label=None,fill=False):
-            return self._makeWires(obj,name,fill=fill,label=label,offset=self.pad_inflate)
+            return self._makeWires(obj,name,fill=fill,label=label, offset=self.pad_inflate)
 
         def _face(obj,name,label=None):
-            return _wire(obj,name,label,True)
+            objs = _wire(obj,name,label,True)
+
+            if not cut_wires and not cut_non_closed:
+                return objs
+
+            if not isinstance(objs, list):
+                objs = [objs]
+
+            inner_label = label + '_inner' if label else 'inner'
+            if cut_wires:
+                objs.append(self._makeWires(cut_wires,name,label=inner_label))
+
+            for width,elist in iteritems(cut_non_closed):
+                l = '{}_{}'.format(inner_label, width)
+                wire = self._makeWires(elist,name,label=l)
+                # thicken non closed wire for hole cutting
+                objs.append(self._makeArea(wire, name, label=l, offset = width*0.5))
+
+            return self._makeArea(objs, name, op=1,fill=True)
 
         _solid = _face
 
@@ -1379,6 +1414,14 @@ class KicadFcad:
             m_at,m_angle = getAt(m.at)
             pads = []
             count += len(m.pad)
+
+            cut_wires = []
+            cut_non_closed = defaultdict(list)
+
+            self._pushLog('checking edge cuts')
+            self._makeEdgeCuts(m, 'fp', cut_wires, cut_non_closed)
+            self._popLog()
+
             for j,p in enumerate(m.pad):
                 if self.filterNets(p) or self.filterLayer(p):
                     skip_count+=1
@@ -1453,7 +1496,7 @@ class KicadFcad:
             else:
                 objs.append(self._makeCompound(vias,'vias'))
 
-        self._log('modules: {}',len(self.pcb.module))
+        self._log('footprints: {}',len(self.pcb.module))
         self._log('pads: {}, skipped: {}',count,skip_count)
         self._log('vias: {}, skipped: {}',len(self.pcb.via),via_skip)
         self._log('total pads added: {}',
