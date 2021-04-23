@@ -400,16 +400,18 @@ def getKicadPath(env=''):
     import re
     kicad_common = os.path.join(confpath,'kicad_common')
     if not os.path.isfile(kicad_common):
-        logger.warning('cannot find kicad_common')
-        return None
+        kicad_common += ".json"
+        if not os.path.isfile(kicad_common):
+            logger.warning('cannot find kicad_common')
+            return None
     with open(kicad_common,'r') as f:
         content = f.read()
-    match = re.search(r'^\s*KISYS3DMOD\s*=\s*([^\r\n]+)',content,re.MULTILINE)
+    match = re.search(r'^\s*"*KISYS3DMOD"*\s*[:=]\s*([^\r\n]+)',content,re.MULTILINE)
     if not match:
         logger.warning('no KISYS3DMOD found')
         return None
 
-    return match.group(1).rstrip(' ')
+    return match.group(1).rstrip(' "')
 
 _model_cache = {}
 
