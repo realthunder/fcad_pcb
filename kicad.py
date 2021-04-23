@@ -618,7 +618,7 @@ class KicadFcad:
 
     def netName(self,p):
         try:
-            return self.net_names[self.getNet(p)]
+            return unquote(self.net_names[self.getNet(p)])
         except Exception:
             return 'net?'
 
