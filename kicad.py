@@ -1,7 +1,6 @@
 from __future__ import (absolute_import, division,
         print_function, unicode_literals)
 #from builtins import *
-from future.utils import iteritems
 
 from collections import defaultdict
 from math import sqrt, atan2, degrees, sin, cos, radians, pi, hypot
@@ -507,7 +506,7 @@ class KicadFcad:
         self.layer_type = 0
         self.layer_match = None
 
-        for key,value in iteritems(kwds):
+        for key,value in kwds.items():
             if not hasattr(self,key):
                 raise ValueError('unknown parameter "{}"'.format(key))
             setattr(self,key,value)
@@ -1090,7 +1089,7 @@ class KicadFcad:
             if wires:
                 objs.append(self._makeWires(wires,'board'))
 
-            for width,edges in iteritems(non_closed):
+            for width,edges in non_closed.items():
                 objs.append(self._makeWires(edges,'board',label=width))
 
             return self._makeCompound(_addHoles(objs),'board')
@@ -1107,7 +1106,7 @@ class KicadFcad:
             if wires:
                 objs.append(self._makeWires(wires,'board',label='inner'))
 
-            for width,elist in iteritems(non_closed):
+            for width,elist in non_closed.items():
                 wire = self._makeWires(elist,'board',label=width)
                 # thicken non closed wire for hole cutting
                 objs.append(self._makeArea(wire,'board',label=width,
@@ -1269,7 +1268,7 @@ class KicadFcad:
                 for r in ((ovals,'oval'),(holes,'hole')):
                     if not r[0]:
                         continue
-                    for (width,rs) in iteritems(r[0]):
+                    for (width,rs) in r[0].items():
                         objs.append(func(rs,r[1]))
 
             if not npth:
@@ -1388,7 +1387,7 @@ class KicadFcad:
             if cut_wires:
                 objs.append(self._makeWires(cut_wires,name,label=inner_label))
 
-            for width,elist in iteritems(cut_non_closed):
+            for width,elist in cut_non_closed.items():
                 l = '{}_{}'.format(inner_label, width)
                 wire = self._makeWires(elist,name,label=l)
                 # thicken non closed wire for hole cutting
@@ -1570,8 +1569,8 @@ class KicadFcad:
 
         objs = []
         i = 0
-        for (name,sss) in iteritems(tracks):
-            for (width,ss) in iteritems(sss):
+        for (name,sss) in tracks.items():
+            for (width,ss) in sss.items():
                 self._log('making {} tracks {} of width {:.2f}, ({}/{})',
                         len(ss),name,width,i,count)
                 i+=len(ss)
