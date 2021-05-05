@@ -482,7 +482,7 @@ class KicadFcad:
         self.via_bound = 0
 
         # whether to skip via hole if there is via_bound
-        self.via_skip_hole = True
+        self.via_skip_hole = None
 
         self.add_feature = True
         self.part_path = None
@@ -523,6 +523,9 @@ class KicadFcad:
         self.layer = ''
 
         self.setLayer(self.layer_type)
+
+        if self.via_skip_hole is None and self.via_bound:
+            self.via_skip_hole = True
 
         self._nets = set()
         self.net_names = dict()
@@ -1881,7 +1884,7 @@ class KicadFcad:
                 drills = self.makeHoles(shape_type='solid',prefix=None,
                         board_thickness=board_thickness,extra_thickness=4*thickness,
                         oval=True,npth=-1,offset=thickness,
-                        skip_via=self.via_skip_hole and self.via_bound)
+                        skip_via=self.via_skip_hole)
                 if drills:
                     self._place(drills,FreeCAD.Vector(0,0,-thickness))
                     objs = self._makeCut(objs,drills,'coppers')
