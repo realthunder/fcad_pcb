@@ -573,6 +573,7 @@ class KicadFcad:
         return offsets
 
     def setNetFilter(self,*nets):
+        self._nets.clear()
         ndict = dict()
         nset = set()
         for n in self.pcb.net:
