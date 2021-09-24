@@ -964,7 +964,9 @@ class KicadFcad:
             _,layer = self.findLayer(44)
         except Exception:
             raise RuntimeError('No Edge.Cuts layer found')
+        return self._makeShape(sexp, ctx, wires, non_closed, layer, at)
 
+    def _makeShape(self, sexp, ctx, wires, non_closed=None, layer=None, at=None):
         edges = []
 
         if at:
@@ -981,7 +983,10 @@ class KicadFcad:
             self._log('making {} {}s',len(primitives), tp)
             make_shape = globals()['make_gr_{}'.format(tp)]
             for l in primitives:
-                if l.layer != layer:
+                if not layer:
+                    if self.filterNets(l) or self.filterLayer(l):
+                        continue
+                elif l.layer != layer:
                     continue
                 shape = make_shape(l)
                 if angle:
@@ -1001,7 +1006,8 @@ class KicadFcad:
 
         for info in edges:
             w,e = info
-            e.fixTolerance(w)
+            if w > 1e-7:
+                e.fixTolerance(w)
             info += [e.firstVertex().Point,e.lastVertex().Point]
 
         while edges:
@@ -1012,21 +1018,21 @@ class KicadFcad:
             i = 0
             while i < len(edges):
                 w,e,ps,pe = edges[i]
-                if pstart.distanceToPoint(ps) < (wstart+w)/2:
+                if pstart.distanceToPoint(ps) <= (wstart+w)/2:
                     e.reverse()
                     pstart = pe
                     wstart = w
                     elist.insert(0,(w,e))
-                elif pstart.distanceToPoint(pe) < (wstart+w)/2:
+                elif pstart.distanceToPoint(pe) <= (wstart+w)/2:
                     pstart = ps
                     wstart = w
                     elist.insert(0,(w,e))
-                elif pend.distanceToPoint(ps) < (wend+w)/2:
+                elif pend.distanceToPoint(ps) <= (wend+w)/2:
                     e.reverse()
                     pend = pe
                     wend = w
                     elist.append((w,e))
-                elif pend.distanceToPoint(pe) < (wend+w)/2:
+                elif pend.distanceToPoint(pe) <= (wend+w)/2:
                     pend = ps
                     wend = w
                     elist.append((w,e))
@@ -1035,7 +1041,7 @@ class KicadFcad:
                     continue
                 edges.pop(i)
                 i = 0
-                if pstart.distanceToPoint(pend) < (wstart+wend)/2:
+                if pstart.distanceToPoint(pend) <= (wstart+wend)/2:
                     closed = True
                     break
 
@@ -1056,9 +1062,15 @@ class KicadFcad:
 
             if wire and closed:
                 wires.append(wire)
+            elif non_closed is not None:
+                for w,e in elist:
+                    if w > 5e-7:
+                        non_closed[w].append(e)
             else:
                 for w,e in elist:
-                    non_closed[w].append(e)
+                    if w > 5e-7:
+                        wires.append(self._makeWires(
+                            e, name=None, offset=w*0.5, thicken=True))
 
     def makeBoard(self,shape_type='solid',thickness=None,fit_arcs=True,
             holes=True, minHoleSize=0,ovalHole=True,prefix=''):
@@ -1097,7 +1109,7 @@ class KicadFcad:
                 objs.append(self._makeWires(wires,'board'))
 
             for width,edges in non_closed.items():
-                objs.append(self._makeWires(edges,'board',label=width))
+                objs.append(self._makeWires(edges,'board',label=width,offset=width*0.5))
 
             return self._makeCompound(_addHoles(objs),'board')
 
@@ -1465,6 +1477,8 @@ class KicadFcad:
                         '{}#{}#{}#{}#{}'.format(i,j,p[0],ref,self.netName(p))))
                 else:
                     pads.append(w)
+
+            self._makeShape(m, 'fp', pads)
 
             if not pads:
                 continue
