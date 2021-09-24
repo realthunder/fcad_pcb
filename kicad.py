@@ -802,7 +802,7 @@ class KicadFcad:
 
 
     def _makeArea(self,obj,name,offset=0,op=0,fill=None,label=None,
-                force=False,fit_arcs=False,reorient=False,workplane=False):
+                force=False,fit_arcs=False,reorient=False,workplane=False,thicken=False):
         if fill is None:
             fill = 2
         elif fill:
@@ -813,7 +813,7 @@ class KicadFcad:
         if not isinstance(obj,(list,tuple)):
             obj = (obj,)
 
-        if self.add_feature:
+        if self.add_feature and name:
 
             if not force and obj[0].TypeId == 'Path::FeatureArea' and (
                 obj[0].Operation == op or len(obj[0].Sources)==1) and \
@@ -831,6 +831,7 @@ class KicadFcad:
                 ret.Fill = fill
                 ret.Offset = offset
                 ret.Coplanar = 0
+                ret.Thicken = thicken
                 if workplane:
                     ret.WorkPlane = self.work_plane
                 ret.FitArcs = fit_arcs
@@ -840,23 +841,25 @@ class KicadFcad:
 
             recomputeObj(ret)
         else:
-            ret = Path.Area(Fill=fill,FitArcs=fit_arcs,Coplanar=0,
-                    Accuracy=self.arc_fit_accuracy)
+            ret = Path.Area(Fill=fill,
+                            FitArcs=fit_arcs,
+                            Coplanar=0,
+                            Reorient=reorient,
+                            Accuracy=self.arc_fit_accuracy,
+                            Offset=offset,
+                            Thicken=thicken)
             if workplane:
                 ret.setPlane(self.work_plane)
             for o in obj:
                 ret.add(o,op=op)
-            if offset:
-                ret = ret.makeOffset(offset=offset)
-            else:
-                ret = ret.getShape()
+            ret = ret.getShape()
         return ret
 
 
     def _makeWires(self,obj,name,offset=0,fill=False,label=None,
-            fit_arcs=False,workplane=False):
+            fit_arcs=False,workplane=False,thicken=False):
 
-        if self.add_feature:
+        if self.add_feature and name:
             if self.make_sketch:
                 obj = self._makeSketch(obj,name,label)
             elif isinstance(obj,Part.Shape):
@@ -878,7 +881,7 @@ class KicadFcad:
 
         if fill or offset:
             return self._makeArea(obj,name,offset=offset,fill=fill,
-                    fit_arcs=fit_arcs,label=label,workplane=workplane)
+                    fit_arcs=fit_arcs,label=label,workplane=workplane,thicken=thicken)
         else:
             return self._makeCompound(obj,name,label=label)
 
@@ -1361,8 +1364,8 @@ class KicadFcad:
                     wire = Part.Wire(wire)
                 wires.append(wire)
             else:
-                wire = Path.Area(Accuracy=self.arc_fit_accuracy,Thicken=wire.isClosed(),
-                            Offset=width*0.5).add(wire).getShape()
+                wire = self._makeWires(
+                        wire, name=None, offset=width*0.5, thicken=not wire.isClosed())
                 wires += wire.Wires
         if not wires:
             return
