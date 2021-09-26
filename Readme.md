@@ -19,6 +19,7 @@ After clone, cd to fcad_pcb, and checkout the submodules
 git submodule update --init --recursive
 ```
 ## Usage
+
 Start FreeCAD, in the console, the simplest usage:
 
 - generating copper layers
@@ -35,6 +36,9 @@ pcb.makeCoppers()
 from fcad_pcb import kicad
 pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>)
 pcb.make(copper_thickness=0.035, board_thickness=1.53, combo=False, fuseCoppers=True )
+#
+# NOTE: KiCAD 5.99 and later added possibility to specify per layer thickness including dielectric layers.
+# You are no longer required to explicitly supply thickness parameters in any of the function calls as shown above.
 ```
 
 * supply copper thickness per layer, pass a `dictionary` instead. Use either
@@ -42,6 +46,9 @@ pcb.make(copper_thickness=0.035, board_thickness=1.53, combo=False, fuseCoppers=
   `None` can be used for default thickness.
 ```python
 pcb.make(copper_thickness={None:0.05, 0:0.04, 'B.Cu':0.09}, board_thickness=1.53, combo=False, fuseCoppers=True)
+#
+# NOTE: KiCAD 5.99 and later added possibility to specify per layer thickness including dielectric layers.
+# You are no longer required to explicitly supply thickness parameters in any of the function calls as shown above.
 ```
 
 
@@ -73,7 +80,7 @@ pcb.add_feature = False
 # All the above makeXXX() calls now returns a shape without creating any features
 # For example, if you want the complete fused copper layers. Note 'thickness' can
 # be a dictionary for per layer thickness
-coppers = pcb.makeCoppers(shape_type='solid',holes=True,fuse=True,thickness=0.05)
+coppers = pcb.makeCoppers(shape_type='solid',holes=True,fuse=True)
 Part.show(coppers)
 ```
 
