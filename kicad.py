@@ -460,6 +460,9 @@ def loadModel(filename):
 
 class KicadFcad:
     def __init__(self,filename=None,debug=False,**kwds):
+
+        #############################################################
+        # Begining of user customizable parameters during construction
         self.prefix = ''
         self.indent = '  '
         self.make_sketch = False
@@ -476,6 +479,10 @@ class KicadFcad:
         self.zone_merge_holes = not debug
         self.merge_pads = not debug
         self.arc_fit_accuracy = 0.0005
+        self.layer_thickness = 0.01
+        self.copper_thickness = 0.05
+        self.board_thickness = None
+        self.stackup = None
 
         # set -1 to disable via in pads, 0 to enable as normal, >0 to use as
         # a ratio to via radius for creating a square to simplify via
@@ -505,7 +512,10 @@ class KicadFcad:
         }
         self.layer_type = 0
         self.layer_match = None
+        # Ending of user customizable parameters
+        #############################################################
 
+        # checking user overriden parameters
         for key,value in kwds.items():
             if not hasattr(self,key):
                 raise ValueError('unknown parameter "{}"'.format(key))
@@ -514,6 +524,18 @@ class KicadFcad:
         if not self.part_path:
             self.part_path = getKicadPath(self.path_env)
         self.pcb = KicadPCB.load(self.filename)
+
+        if not self.board_thickness:
+            try:
+                self.board_thickness = self.pcb.general.thickness
+            except Exception:
+                pass
+            if not self.board_thickness:
+                self.board_thickness = 2.0
+
+        self._dielectric_layers = []
+        self._stackup_map = {}
+        self._initStackUp()
 
         # stores layer name as read from the file, may contain quotes depending
         # on kicad version
@@ -534,7 +556,7 @@ class KicadFcad:
                 self.net_names[n[0]] = n[1]
             self.setNetFilter(*self.nets)
 
-    def findLayer(self,layer):
+    def findLayer(self,layer, deftype=None):
         try:
             layer = int(layer)
         except:
@@ -542,9 +564,13 @@ class KicadFcad:
                 name = self.pcb.layers[layer_type][0]
                 if name==layer or unquote(name)==layer:
                     return (int(layer_type),name)
+            if deftype is not None:
+                return deftype, layer
             raise KeyError('layer {} not found'.format(layer))
         else:
             if str(layer) not in self.pcb.layers:
+                if deftype is not None:
+                    return deftype, str(layer)
                 raise KeyError('layer {} not found'.format(layer))
             return (layer, self.pcb.layers[str(layer)][0])
 
@@ -556,19 +582,99 @@ class KicadFcad:
         else:
             self.layer_match = '*.{}'.format(self.layer.split('.')[-1])
 
+    def _copperLayers(self):
+        coppers = [ (int(t),unquote(self.pcb.layers[t][0])) \
+                        for t in self.pcb.layers if int(t)<=31]
+        coppers.sort(key=lambda x : x[0], reverse=True)
+        return coppers
+
+    def _initStackUp(self):
+        if self.stackup is None:
+            self.stackup = []
+            try:
+                # If no stackup given by user, extract stack info from setup
+                offset = 0.0
+                last_copper = 0.0
+                for layer in self.pcb.setup.stackup.layer:
+                    layer_type, _ = self.findLayer(layer[0], 99)
+                    t = getattr(layer, 'thickness',
+                            self.copper_thickness if layer_type<=32 else self.layer_thickness)
+                    if layer_type <= 31:
+                        last_copper = offset
+                    offset -= t
+                    self.stackup.append([unquote(layer[0]), offset, t])
+                # adjust offset to make the last copper's upper face at z = 0.
+                # In other word, make the last dielectric layer reset at z = 0.
+                # Right now, makeBoard() always assume it is at z = 0.
+                for entry in self.stackup:
+                    entry[1] -= last_copper
+            except Exception:
+                pass
+
+        board_thickness = 0.0
+        accumulate = None
+        for item in self.stackup:
+            try:
+                layer, name = self.findLayer(item[0])
+            except Exception:
+                continue
+            self._stackup_map[item[0]] = item
+            thickness = item[2]
+            if layer <= 31: # is copper layer
+                if accumulate is not None:
+                    # counting intermediate layer(s) thickness
+                    board_thickness += accumulate
+                accumulate = 0.0
+            if accumulate is not None:
+                accumulate += thickness
+
+        # only respect stackup if all copper layers are specified
+        coppers = self._copperLayers()
+        if self.stackup:
+            for _,name in coppers:
+                if name not in self._stackup_map:
+                    self._log('stackup info ignored because copper layer {} is not found',
+                              level='warning')
+                    self.stackup = []
+                    self._stackup_map = {}
+                    break
+
+        if self.stackup:
+            if board_thickness:
+                self.board_thickness = board_thickness
+        elif len(coppers) == 1:
+            name = coppers[0][1]
+            self._stackup_map[name] = [name, 0, self.copper_thickness]
+        else:
+            step = (self.board_thickness + self.copper_thickness) / (len(coppers)-1)
+            offset = -self.copper_thickness
+            for _,name in coppers:
+                self._stackup_map[name] = [name, offset, self.copper_thickness]
+                offset += step
+
+        # setup dielectric layer offset and thickness
+        current = 1000.0
+        for _, name in coppers:
+            _, offset, thickness = self._stackup_map[name]
+            if offset > current:
+                self._dielectric_layers.append([current, offset - current])
+            current = offset + thickness
+
     def layerOffsets(self, thickness=None):
-        if not thickness:
-            thickness = self.pcb.general.thickness
+        coppers = self._copperLayers()
         offsets = dict()
-        coppers = [ (31-int(t),self.pcb.layers[t][0]) for t in self.pcb.layers if int(t)<=31]
-        coppers.sort(key=lambda x : x[0])
+        if not thickness:
+            for _, name in coppers:
+                offsets[name] = self._stackup_map[name][1]
+            return offsets
+
         if len(coppers) == 1:
-            offsets[unquote(coppers[0][1])] = 0
+            offsets[coppers[0][1]] = 0
             return offsets
         step = thickness / (len(coppers)-1)
         offset = 0.0
         for _,name in coppers:
-            offsets[unquote(name)] = offset
+            offsets[name] = offset
             offset += step
         return offsets
 
@@ -1090,9 +1196,6 @@ class KicadFcad:
             self._popLog('no board edges found')
             return
 
-        if not thickness:
-            thickness = self.pcb.general.thickness
-
         def _addHoles(objs):
             h = self._cutHoles(None,holes,None,
                             minSize=minHoleSize,oval=ovalHole)
@@ -1138,21 +1241,56 @@ class KicadFcad:
             return self._makeSolid(_face(),'board',thickness,
                     fit_arcs = fit_arcs)
 
+        if not thickness and self._dielectric_layers:
+            layers = self._dielectric_layers
+        else:
+            if not thickness:
+                thickness = self.board_thickness
+            layers = [self.copper_thickness, thickness]
+
         try:
             func = locals()['_{}'.format(shape_type)]
         except KeyError:
             raise ValueError('invalid shape type: {}'.format(shape_type))
 
+        thickness = layers[0][1]
         obj = func()
         if self.add_feature:
             if hasattr(obj.ViewObject,'MapFaceColor'):
                 obj.ViewObject.MapFaceColor = False
             obj.ViewObject.ShapeColor = self.colors['board']
 
+            if len(layers) > 1:
+                link = FreeCAD.ActiveDocument.addObject('App::Link', 'Link')
+                link.LinkedObject = obj
+                link.ShowElement = False
+                link.ElementCount = len(layers)
+                scales = []
+                plas = []
+                for offset, t in layers:
+                    scales.append(FreeCAD.Vector(1, 1, 1))
+                    if t != thickness:
+                        scales[-1].z = t/thickness
+                    plas.append(FreeCAD.Placement())
+                    plas[-1].Base.z = offset
+                link.PlacementList = plas
+                link.ScaleList = scales
+                obj = link
+                recomputeObj(obj)
+        elif len(layers) > 1:
+            objs = []
+            objs.append(obj)
+            for offset, t in layers[1:]:
+                matrix = FreeCAD.Matrix()
+                if t != thickness:
+                    matrix.scale(FreeCAD.Vector(1, 1, t/thickness))
+                matrix.move(FreeCAD.Vector(0, 0, offset))
+                objs.append(obj.transformed(matrix, False, True))
+            obj = self._makeCompound(objs, 'board')
+
         self._popLog('board done')
         fitView();
         return obj
-
 
     def makeHoles(self,shape_type='wire',minSize=0,maxSize=0,
             oval=False,prefix='',offset=0.0,npth=0,skip_via=False,
@@ -1237,8 +1375,8 @@ class KicadFcad:
             else:
                 thickness = board_thickness
                 if not thickness:
-                    thickness = self.pcb.general.thickness
-                layer_offsets = self.layerOffsets(thickness)
+                    thickness = self.board_thickness
+                layer_offsets = self.layerOffsets(board_thickness)
                 ofs = -abs(offset)
                 for v in self.pcb.via:
                     if self.filterNets(v):
@@ -1304,12 +1442,12 @@ class KicadFcad:
             if shape_type != 'solid':
                 objs = self._makeCompound(objs,'holes',label=label)
             else:
-                if not board_thickness:
-                    board_thickness = self.pcb.general.thickness+0.02
-                    pos = -0.01
+                if board_thickness:
+                    thickness = board_thickness
                 else:
-                    pos = 0.0
-                thickness = board_thickness + extra_thickness
+                    thickness = self.board_thickness
+                thickness += 0.02 + extra_thickness
+                pos = -0.01
                 objs = self._makeSolid(objs,'holes',thickness,label=label)
                 if blind_holes:
                     objs = [objs]
@@ -1824,7 +1962,7 @@ class KicadFcad:
 
 
     def makeCoppers(self,shape_type='face',fit_arcs=True,prefix='',
-            holes=False,board_thickness=None,thickness=0.05,fuse=False):
+            holes=False,board_thickness=None,thickness=None,fuse=False):
 
         self._pushLog('making all copper layers...',prefix=prefix)
 
@@ -1832,20 +1970,34 @@ class KicadFcad:
         objs = []
         layers = []
         thicknesses = []
-        for i in range(0,32):
-            if str(i) in self.pcb.layers:
-                layers.append(i)
+        offsets = []
+
+        if not board_thickness or not thickness:
+            for layer, name in self._copperLayers():
+                layers.append(layer)
+                _,offset, t = self._stackup_map[name]
+                offsets.append(offset)
+                thicknesses.append(t)
+        else:
+            for layer, name in self._copperLayers():
+                layers.append(layer)
                 if not hasattr(thickness,'get'):
                     thicknesses.append(float(thickness))
-                layer = self.pcb.layers[str(i)]
-                for key in (i, str(i), layer, unquote(layer), None, ''):
-                    try:
-                        thicknesses.append(float(thickness.get(key)))
-                        break
-                    except Exception:
-                        pass
+                else:
+                    for key in (layer, str(layer), name, None, ''):
+                        try:
+                            thicknesses.append(float(thickness.get(key)))
+                            break
+                        except Exception:
+                            pass
                 if not len(layers) == len(thicknesses):
-                    raise RuntimeError('No copper thickness found for layer ' % self.pcb.layers[str(i)])
+                    raise RuntimeError('No copper thickness found for layer ' % name)
+
+            if len(layers) == 1:
+                z_step = 0
+            else:
+                z_step = (board_thickness+thicknesses[-1])/(len(layers)-1)
+            offsets = [ board_thickness - i*z_step for i,_ in enumerate(layers) ]
 
         thickness = max(thicknesses)
 
@@ -1854,12 +2006,6 @@ class KicadFcad:
 
         if not board_thickness:
             board_thickness = self.pcb.general.thickness
-
-        z = board_thickness
-        if len(layers) == 1:
-            z_step = 0
-        else:
-            z_step = (z+thicknesses[-1])/(len(layers)-1)
 
         if not holes:
             hole_shapes = None
@@ -1870,13 +2016,12 @@ class KicadFcad:
             hole_shapes = self._cutHoles(None,holes,None)
 
         try:
-            for layer,t in zip(layers, thicknesses):
+            for layer,t,z in zip(layers, thicknesses, offsets):
                 self.setLayer(layer)
                 copper = self.makeCopper(shape_type,t,fit_arcs=fit_arcs,
                                     holes=hole_shapes,z=z,prefix=None,fuse=fuse)
                 if copper:
                     objs.append(copper)
-                z -= z_step
         finally:
             self.setLayer(layer_save)
 
@@ -2027,7 +2172,7 @@ class KicadFcad:
 
 
     def make(self,copper_thickness=0.05,fit_arcs=True,load_parts=False,
-            board_thickness=0, combo=True, fuseCoppers=False):
+            board_thickness=None, combo=True, fuseCoppers=False):
 
         self._pushLog('making pcb...',prefix='')
 
