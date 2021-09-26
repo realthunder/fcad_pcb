@@ -1244,7 +1244,7 @@ class KicadFcad:
         else:
             if not thickness:
                 thickness = self.board_thickness
-            layers = [self.copper_thickness, thickness]
+            layers = [(self.copper_thickness, thickness)]
 
         try:
             func = locals()['_{}'.format(shape_type)]
