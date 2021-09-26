@@ -908,7 +908,7 @@ class KicadFcad:
 
 
     def _makeArea(self,obj,name,offset=0,op=0,fill=None,label=None,
-                force=False,fit_arcs=False,reorient=False,workplane=False,thicken=False):
+                force=False,fit_arcs=False,reorient=False,thicken=False):
         if fill is None:
             fill = 2
         elif fill:
@@ -938,8 +938,7 @@ class KicadFcad:
                 ret.Offset = offset
                 ret.Coplanar = 0
                 ret.Thicken = thicken
-                if workplane:
-                    ret.WorkPlane = self.work_plane
+                ret.WorkPlane = self.work_plane
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
                 for o in obj:
@@ -954,8 +953,7 @@ class KicadFcad:
                             Accuracy=self.arc_fit_accuracy,
                             Offset=offset,
                             Thicken=thicken)
-            if workplane:
-                ret.setPlane(self.work_plane)
+            ret.setPlane(self.work_plane)
             for o in obj:
                 ret.add(o,op=op)
             ret = ret.getShape()
@@ -963,7 +961,7 @@ class KicadFcad:
 
 
     def _makeWires(self,obj,name,offset=0,fill=False,label=None,
-            fit_arcs=False,workplane=False,thicken=False):
+            fit_arcs=False,thicken=False):
 
         if self.add_feature and name:
             if self.make_sketch:
@@ -987,7 +985,7 @@ class KicadFcad:
 
         if fill or offset:
             return self._makeArea(obj,name,offset=offset,fill=fill,
-                    fit_arcs=fit_arcs,label=label,workplane=workplane,thicken=thicken)
+                    fit_arcs=fit_arcs,label=label,thicken=thicken)
         else:
             return self._makeCompound(obj,name,label=label)
 
@@ -1698,7 +1696,7 @@ class KicadFcad:
         def _line(edges,label,offset=0,fill=False):
             wires = findWires(edges)
             return self._makeWires(wires,'track', offset=offset,
-                    fill=fill, label=label, workplane=True, fit_arcs=fit_arcs)
+                    fill=fill, label=label, fit_arcs=fit_arcs)
 
         def _wire(edges,label,fill=False):
             return _line(edges,label,width*0.5,fill)
