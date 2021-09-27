@@ -614,17 +614,17 @@ class KicadFcad:
         board_thickness = 0.0
         accumulate = None
         for item in self.stackup:
-            try:
-                layer, name = self.findLayer(item[0])
-            except Exception:
-                continue
+            layer, name = self.findLayer(item[0], 99)
             self._stackup_map[item[0]] = item
             thickness = item[2]
             if layer <= 31: # is copper layer
                 if accumulate is not None:
                     # counting intermediate layer(s) thickness
                     board_thickness += accumulate
-                accumulate = 0.0
+                    accumulate = 0.0
+                else:
+                    accumulate = 0.0
+                    continue
             if accumulate is not None:
                 accumulate += thickness
 
@@ -1443,7 +1443,7 @@ class KicadFcad:
                     thickness = board_thickness
                 else:
                     thickness = self.board_thickness
-                thickness += 0.02 + extra_thickness
+                thickness += extra_thickness
                 pos = -0.01
                 objs = self._makeSolid(objs,'holes',thickness,label=label)
                 if blind_holes:
@@ -2001,9 +2001,6 @@ class KicadFcad:
 
         if not layers:
             raise ValueError('no copper layer found')
-
-        if not board_thickness:
-            board_thickness = self.pcb.general.thickness
 
         if not holes:
             hole_shapes = None
