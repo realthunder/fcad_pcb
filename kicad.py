@@ -585,7 +585,7 @@ class KicadFcad:
     def _copperLayers(self):
         coppers = [ (int(t),unquote(self.pcb.layers[t][0])) \
                         for t in self.pcb.layers if int(t)<=31]
-        coppers.sort(key=lambda x : x[0], reverse=True)
+        coppers.sort(key=lambda x : x[0])
         return coppers
 
     def _initStackUp(self):
@@ -647,14 +647,15 @@ class KicadFcad:
             self._stackup_map[name] = [name, 0, self.copper_thickness]
         else:
             step = (self.board_thickness + self.copper_thickness) / (len(coppers)-1)
-            offset = -self.copper_thickness
+            offset = self.board_thickness
             for _,name in coppers:
                 self._stackup_map[name] = [name, offset, self.copper_thickness]
-                offset += step
+                offset -= step
 
-        # setup dielectric layer offset and thickness
+        # setup dielectric layer offset and thickness. Going backwards, because
+        # makeBoard() assumes the first dielectric layer to be located at z=0 
         current = 1000.0
-        for _, name in coppers:
+        for _, name in reversed(coppers):
             _, offset, thickness = self._stackup_map[name]
             if offset > current:
                 self._dielectric_layers.append([current, offset - current])
