@@ -1232,11 +1232,13 @@ class KicadFcad:
             return self._makeArea(_addHoles(objs),'board',
                             op=1,fill=True,fit_arcs=fit_arcs)
 
+        base = []
         def _solid():
-            return self._makeSolid(_face(),'board',thickness,
+            base.append(_face())
+            return self._makeSolid(base[0],'board',thickness,
                     fit_arcs = fit_arcs)
 
-        if not thickness and self._dielectric_layers:
+        if shape_type == 'solid' and not thickness and self._dielectric_layers:
             layers = self._dielectric_layers
         else:
             if not thickness:
@@ -1244,44 +1246,41 @@ class KicadFcad:
             layers = [(self.copper_thickness, thickness)]
 
         try:
-            func = locals()['_{}'.format(shape_type)]
-        except KeyError:
-            raise ValueError('invalid shape type: {}'.format(shape_type))
+            layer_save = self.layer
+            self.layer = None
+            try:
+                func = locals()['_{}'.format(shape_type)]
+            except KeyError:
+                raise ValueError('invalid shape type: {}'.format(shape_type))
 
-        thickness = layers[0][1]
-        obj = func()
-        if self.add_feature:
-            if hasattr(obj.ViewObject,'MapFaceColor'):
-                obj.ViewObject.MapFaceColor = False
-            obj.ViewObject.ShapeColor = self.colors['board']
+            thickness = layers[0][1]
+            obj = func()
+            if self.add_feature:
+                if hasattr(obj.ViewObject,'MapFaceColor'):
+                    obj.ViewObject.MapFaceColor = False
+                obj.ViewObject.ShapeColor = self.colors['board']
 
             if len(layers) > 1:
-                link = FreeCAD.ActiveDocument.addObject('App::Link', 'Link')
-                link.LinkedObject = obj
-                link.ShowElement = False
-                link.ElementCount = len(layers)
-                scales = []
-                plas = []
-                for offset, t in layers:
-                    scales.append(FreeCAD.Vector(1, 1, 1))
-                    if t != thickness:
-                        scales[-1].z = t/thickness
-                    plas.append(FreeCAD.Placement())
-                    plas[-1].Base.z = offset
-                link.PlacementList = plas
-                link.ScaleList = scales
-                obj = link
-                recomputeObj(obj)
-        elif len(layers) > 1:
-            objs = []
-            objs.append(obj)
-            for offset, t in layers[1:]:
-                matrix = FreeCAD.Matrix()
-                if t != thickness:
-                    matrix.scale(FreeCAD.Vector(1, 1, t/thickness))
-                matrix.move(FreeCAD.Vector(0, 0, offset))
-                objs.append(obj.transformed(matrix, False, True))
-            obj = self._makeCompound(objs, 'board')
+                objs = [obj]
+                for offset, t in layers[1:]:
+                    if abs(t - layers[0][1]) < 1e-7:
+                        if self.add_feature:
+                            obj = self._makeObject('Part::Feature', 'board_solid')
+                            obj.Shape = objs[0].Shape
+                        else:
+                            obj = objs[0].copy()
+                    else:
+                        obj = self._makeSolid(base[0], 'board', t)
+                    self._place(obj,Vector(0,0,offset))
+                    if self.add_feature:
+                        if hasattr(obj.ViewObject,'MapFaceColor'):
+                            obj.ViewObject.MapFaceColor = False
+                        obj.ViewObject.ShapeColor = self.colors['board']
+                    objs.append(obj)
+                obj = self._makeCompound(objs, 'board')
+        finally:
+            if layer_save:
+                self.setLayer(layer_save)
 
         self._popLog('board done')
         fitView();
@@ -2017,7 +2016,8 @@ class KicadFcad:
                 if copper:
                     objs.append(copper)
         finally:
-            self.setLayer(layer_save)
+            if layer_save:
+                self.setLayer(layer_save)
 
         if not objs:
             self._popLog('no copper found')
