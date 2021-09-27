@@ -712,10 +712,13 @@ class KicadFcad:
             return bool(self._nets)
 
     def filterLayer(self,p):
-        try:
-            layers = [unquote(s) for s in p.layers]
-        except Exception:
-            layers = []
+        layers = []
+        l = getattr(p, 'layers', [])
+        if l == 'F&B.Cu':
+            layers.append('F.Cu')
+            layers.append('B.Cu')
+        else:
+            layers = [unquote(s) for s in l]
         if hasattr(p, 'layer'):
             layers.append(unquote(p.layer))
         if not layers:
