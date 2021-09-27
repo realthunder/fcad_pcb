@@ -909,7 +909,7 @@ class KicadFcad:
 
 
     def _makeArea(self,obj,name,offset=0,op=0,fill=None,label=None,
-                force=False,fit_arcs=False,reorient=False,thicken=False):
+                force=False,fit_arcs=False,reorient=False):
         if fill is None:
             fill = 2
         elif fill:
@@ -938,7 +938,6 @@ class KicadFcad:
                 ret.Fill = fill
                 ret.Offset = offset
                 ret.Coplanar = 0
-                ret.Thicken = thicken
                 ret.WorkPlane = self.work_plane
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
@@ -952,8 +951,7 @@ class KicadFcad:
                             Coplanar=0,
                             Reorient=reorient,
                             Accuracy=self.arc_fit_accuracy,
-                            Offset=offset,
-                            Thicken=thicken)
+                            Offset=offset)
             ret.setPlane(self.work_plane)
             for o in obj:
                 ret.add(o,op=op)
@@ -961,8 +959,7 @@ class KicadFcad:
         return ret
 
 
-    def _makeWires(self,obj,name,offset=0,fill=False,label=None,
-            fit_arcs=False,thicken=False):
+    def _makeWires(self,obj,name,offset=0,fill=False,label=None, fit_arcs=False):
 
         if self.add_feature and name:
             if self.make_sketch:
@@ -986,7 +983,7 @@ class KicadFcad:
 
         if fill or offset:
             return self._makeArea(obj,name,offset=offset,fill=fill,
-                    fit_arcs=fit_arcs,label=label,thicken=thicken)
+                    fit_arcs=fit_arcs,label=label)
         else:
             return self._makeCompound(obj,name,label=label)
 
@@ -1174,8 +1171,7 @@ class KicadFcad:
             else:
                 for w,e in elist:
                     if w > 5e-7:
-                        wires.append(self._makeWires(
-                            e, name=None, offset=w*0.5, thicken=True))
+                        wires.append(self._makeWires(e, name=None, offset=w*0.5))
 
     def makeBoard(self,shape_type='solid',thickness=None,fit_arcs=True,
             holes=True, minHoleSize=0,ovalHole=True,prefix=''):
@@ -1513,8 +1509,7 @@ class KicadFcad:
                     wire = Part.Wire(wire)
                 wires.append(wire)
             else:
-                wire = self._makeWires(
-                        wire, name=None, offset=width*0.5, thicken=not wire.isClosed())
+                wire = self._makeWires(wire, name=None, offset=width*0.5)
                 wires += wire.Wires
         if not wires:
             return
