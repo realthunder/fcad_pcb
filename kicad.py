@@ -1821,7 +1821,7 @@ class KicadFcad:
             count = len(z.filled_polygon)
             self._pushLog('making zone {}...', z.net_name)
             for idx,p in enumerate(z.filled_polygon):
-                if self.filterLayer(p):
+                if (hasattr(p, 'layer') or hasattr(p, 'layers')) and self.filterLayer(p):
                     continue
                 zone_holes = []
                 table = {}
