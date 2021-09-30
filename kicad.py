@@ -1496,6 +1496,9 @@ class KicadFcad:
                 if isinstance(self.holes_cache,dict):
                     self.holes_cache[key] = holes
 
+        if not holes:
+            return objs
+
         if not objs:
             return holes
 
