@@ -1,7 +1,7 @@
 # FreeCAD scripts for PCB CAD/CAM & FEM
 
 fcad_pcb is yet another way to improve ECAD/MCAD collaboration between
-[FreeCAD](http://www.freecadweb.org/) and [KiCAD](http://kicad-pcb.org/). 
+[FreeCAD](http://www.freecadweb.org/) and [KiCAD](http://kicad.org/). 
 
 The original purpose of these tools was to do **PCB milling in FreeCAD**. It can do much more now. 
 It can **generate gcode from kicad_pcb** directly without going though gerber stage. 
