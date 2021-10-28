@@ -1197,10 +1197,11 @@ class KicadFcad:
         def _addHoles(objs):
             h = self._cutHoles(None,holes,None,
                             minSize=minHoleSize,oval=ovalHole)
-            if isinstance(h,(tuple,list)):
-                objs += h
-            elif holes:
-                objs.append(h)
+            if h:
+                if isinstance(h,(tuple,list)):
+                    objs += h
+                elif holes:
+                    objs.append(h)
             return objs
 
         def _wire():
