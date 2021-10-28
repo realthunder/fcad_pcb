@@ -275,7 +275,11 @@ def make_gr_line(params):
     return Part.makeLine(makeVect(params.start),makeVect(params.end))
 
 def make_gr_arc(params):
-    return  makeArc(makeVect(params.start),makeVect(params.end),params.angle)
+    if hasattr(params, 'angle'):
+        return  makeArc(makeVect(params.start),makeVect(params.end),params.angle)
+    return Part.ArcOfCircle(makeVect(params.start),
+                            makeVect(params.mid),
+                            makeVect(params.end)).toShape()
 
 def make_gr_curve(params):
     return makeCurve([makeVect(p) for p in SexpList(params.pts.xy)])
