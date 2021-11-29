@@ -15,6 +15,7 @@ import Path
 import sys, os
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from .kicad_parser import KicadPCB,SexpList
+from .kicad_parser import unquote
 
 PY3 = sys.version_info[0] == 3
 if PY3:
@@ -22,10 +23,6 @@ if PY3:
 else:
     string_types = basestring,
 
-def unquote(s):
-    if len(s)>1 and s[0]=='"':
-        return s[1:-1]
-    return s
 
 def updateGui():
     try:
