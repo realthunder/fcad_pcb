@@ -13,6 +13,7 @@ And finally it can **generate solid tracks, pads and plated drills to enable FEM
 **fcad_pcb** is written in Python, and requires **FreeCAD 0.17** or later to work properly.
 
 Clone this repo into your freecad macro directory. 
+To check what is the default path of your macro directory, go to menu Macro > Macros.. and find the path in the field User macros location: 
 After clone, cd to fcad_pcb, and checkout the submodules
 
 ```python
@@ -20,7 +21,10 @@ git submodule update --init --recursive
 ```
 ## Usage
 
-Start FreeCAD, in the console, the simplest usage:
+Start FreeCAD,
+Launch the python console, for that you need to tick a box from the menu View > Panels > Python Console 
+From there you can start using FCad_PCB in the console. 
+FCad_PCB simplest usage:
 
 - generating copper layers
 
@@ -29,6 +33,11 @@ from fcad_pcb import kicad
 pcb = kicad.KicadFcad(<full_path_to_your_kicad_pcb_file>)
 pcb.makeCoppers()
 ```
+
+Please note that the file path syntax should be one of the following:
+```pcb = kicad.KicadFcad('C:/Users/foo/Desktop/MyProject/MyPCBfile.kicad_pcb')```
+or alternatively if you don't want to replace backslashs for a Windows system : 
+```pcb = kicad.KicadFcad(r'C:\Users\foo\Desktop\MyProject\MyPCBfile.kicad_pcb')```
 
 - generating copper layers, pads, drills as a full solid object, ready to be handled in FEM WB
 
