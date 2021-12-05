@@ -4,7 +4,7 @@ fcad_pcb is yet another way to improve ECAD/MCAD collaboration between
 [FreeCAD](https://www.freecadweb.org/) and [KiCAD](https://kicad.org/).
 
 The original purpose of these tools was to do **PCB milling in FreeCAD**. It can do much more now.:
-* It can **generate gcode from kicad_pcb** directly without going though gerber stage.
+* It can **generate gcode from kicad_pcb** directly without going through the gerber stage.
 * It can let your **modify the PCB directly inside FC** (done already),
 * and potentially export back to kicad_pcb (partially done).
 * and finally it can **generate solid tracks, pads and plated drills to enable FEM and thermal analysis** on KiCad pcb boards.
