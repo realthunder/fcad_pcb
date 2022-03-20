@@ -1,7 +1,7 @@
 ## FreeCAD scripts for PCB CAD/CAM & FEM
 
 fcad_pcb is yet another way to improve ECAD/MCAD collaboration between
-[FreeCAD](https://www.freecadweb.org/) and [KiCAD](https://kicad.org/).
+[FreeCAD](https://www.freecad.org/) and [KiCAD](https://kicad.org/).
 
 The original purpose of these tools was to do **PCB milling in FreeCAD**. It can do much more now.:
 * It can **generate gcode from kicad_pcb** directly without going through the gerber stage.
@@ -100,7 +100,7 @@ pcb.makeCopper()
 
 #### <a name="net-filter"/>Filtering by net name</a>
 
-For local nets you have to specify full heirarchical name
+For local nets you have to specify full hierarchical name
 
   ```python
   pcb.setNetFilter('GND')
