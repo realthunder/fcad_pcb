@@ -487,6 +487,7 @@ class KicadFcad:
         self.copper_thickness = 0.05
         self.board_thickness = None
         self.stackup = None
+        self.quote_no_parse = None
 
         # set -1 to disable via in pads, 0 to enable as normal, >0 to use as
         # a ratio to via radius for creating a square to simplify via
@@ -527,7 +528,7 @@ class KicadFcad:
 
         if not self.part_path:
             self.part_path = getKicadPath(self.path_env)
-        self.pcb = KicadPCB.load(self.filename)
+        self.pcb = KicadPCB.load(self.filename, self.quote_no_parse)
 
         if self.pcb._key == 'module':
             # this is a kicad_mod file, make it look like a kicad_pcb
