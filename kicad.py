@@ -647,6 +647,8 @@ class KicadFcad:
                             self.copper_thickness if layer_type<=32 else self.layer_thickness)
                     if layer_type <= 31:
                         last_copper = offset
+                    if isinstance(t, SexpList):
+                        t = t[0][0]
                     offset -= t
                     self.stackup.append([unquote(layer[0]), offset, t])
                 # adjust offset to make the last copper's upper face at z = 0.
@@ -655,13 +657,14 @@ class KicadFcad:
                 for entry in self.stackup:
                     entry[1] -= last_copper
             except Exception:
-                pass
+                raise
+                #  pass
 
         board_thickness = 0.0
         accumulate = None
         for item in self.stackup:
             layer, name = self.findLayer(item[0], 99)
-            self._stackup_map[item[0]] = item
+            self._stackup_map[unquote(name)] = item
             thickness = item[2]
             if layer <= 31: # is copper layer
                 if accumulate is not None:
@@ -678,9 +681,9 @@ class KicadFcad:
         coppers = self._copperLayers()
         if self.stackup:
             for _,name in coppers:
-                if name not in self._stackup_map:
+                if unquote(name) not in self._stackup_map:
                     self._log('stackup info ignored because copper layer {} is not found',
-                              level='warning')
+                              name, level='warning')
                     self.stackup = []
                     self._stackup_map = {}
                     break
