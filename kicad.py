@@ -652,10 +652,9 @@ class KicadFcad:
                         # thickness field. Add them all.
                         if isinstance(t, SexpList):
                             total = 0.0
-                            for sublayer in t:
+                            for tt in t:
                                 # And for some thickness field, there may be additional
                                 # attribute, like (thickness, 0.05, locked).
-                                tt = getattr(sublayer, 'thickness', None)
                                 if isinstance(tt, (float, int)):
                                     total += tt
                                 else:
@@ -673,7 +672,7 @@ class KicadFcad:
                     for entry in self.stackup:
                         entry[1] -= last_copper
                 except Exception as e:
-                    self._log('Failed parsing stackup info {}', str(e), level='warning')
+                    self._log('Failed parsing stackup info: {}', str(e), level='warning')
 
         board_thickness = 0.0
         accumulate = None
