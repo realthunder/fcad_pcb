@@ -637,34 +637,43 @@ class KicadFcad:
     def _initStackUp(self):
         if self.stackup is None:
             self.stackup = []
-            try:
-                # If no stackup given by user, extract stack info from setup
-                offset = 0.0
-                last_copper = 0.0
-                for layer in self.pcb.setup.stackup.layer:
-                    layer_type, _ = self.findLayer(layer[0], 99)
-                    t = getattr(layer, 'thickness',
-                            self.copper_thickness if layer_type<=32 else self.layer_thickness)
-                    if layer_type <= 31:
-                        last_copper = offset
-                    # Some layer may have more than one thickness field.
-                    if isinstance(t, SexpList):
-                        t = t[0]
-                    # And for some thickness field, there may be additional
-                    # attribute, like (thickness, 0.05, locked).
-                    if not isinstance(t, (float, int)):
-                        t = t[0]
+            if hasattr(self.pcb.setup, 'stackup'):
+                try:
+                    # If no stackup given by user, extract stack info from setup
+                    offset = 0.0
+                    last_copper = 0.0
+                    for layer in self.pcb.setup.stackup.layer:
+                        layer_type, _ = self.findLayer(layer[0], 99)
+                        t = getattr(layer, 'thickness',
+                                self.copper_thickness if layer_type<=32 else self.layer_thickness)
+                        if layer_type <= 31:
+                            last_copper = offset
+                        # Some layer (e.g. dielectric) may have more than one
+                        # thickness field. Add them all.
+                        if isinstance(t, SexpList):
+                            total = 0.0
+                            for sublayer in t:
+                                # And for some thickness field, there may be additional
+                                # attribute, like (thickness, 0.05, locked).
+                                tt = getattr(sublayer, 'thickness', None)
+                                if isinstance(tt, (float, int)):
+                                    total += tt
+                                else:
+                                    total += tt[0]
+                            t = total
+                        elif not isinstance(t, (float, int)):
+                            t = t[0]
 
-                    offset -= t
-                    self.stackup.append([unquote(layer[0]), offset, t])
-                # adjust offset to make the last copper's upper face at z = 0.
-                # In other word, make the last dielectric layer reset at z = 0.
-                # Right now, makeBoard() always assume it is at z = 0.
-                for entry in self.stackup:
-                    entry[1] -= last_copper
-            except Exception:
-                raise
-                #  pass
+                        offset -= t
+                        self.stackup.append([unquote(layer[0]), offset, t])
+
+                    # adjust offset to make the last copper's upper face at z = 0.
+                    # In other word, make the last dielectric layer reset at z = 0.
+                    # Right now, makeBoard() always assume it is at z = 0.
+                    for entry in self.stackup:
+                        entry[1] -= last_copper
+                except Exception as e:
+                    self._log('Failed parsing stackup info {}', str(e), level='warning')
 
         board_thickness = 0.0
         accumulate = None
