@@ -637,12 +637,13 @@ class KicadFcad:
     def _initStackUp(self):
         if self.stackup is None:
             self.stackup = []
-            if hasattr(self.pcb.setup, 'stackup'):
+            stackup = getattr(getattr(self.pcb, 'setup', None), 'stackup', None)
+            if stackup:
                 try:
                     # If no stackup given by user, extract stack info from setup
                     offset = 0.0
                     last_copper = 0.0
-                    for layer in self.pcb.setup.stackup.layer:
+                    for layer in stackup.layer:
                         layer_type, _ = self.findLayer(layer[0], 99)
                         t = getattr(layer, 'thickness',
                                 self.copper_thickness if layer_type<=32 else self.layer_thickness)
@@ -1702,6 +1703,9 @@ class KicadFcad:
             self._place(obj,m_at,m_angle)
             objs.append(obj)
 
+        cut_wires = None
+        cut_non_closed = None
+
         via_skip = 0
         vias = []
         if self.via_bound < 0:
@@ -1851,35 +1855,28 @@ class KicadFcad:
         fitView();
         return objs
 
+    def _makePolygons(self, fields, name, poly_holes,
+            shape_type='face', thickness=0.05, prefix=''):
 
-    def makeZones(self,shape_type='face',thickness=0.05, fit_arcs=True,
-                    holes=False,prefix=''):
+        if not fields:
+            return
 
-        self._pushLog('making zones...',prefix=prefix)
-
-        z = None
-        zone_holes = []
+        count = len(fields)
+        self._pushLog(f'making {count} polygons...',prefix=prefix)
 
         def _wire(obj,fill=False):
-            # NOTE: It is weird that kicad_pcb's zone fillpolygon is 0.127mm
-            # thinner than the actual copper region shown in pcbnew or the
-            # generated gerber. Why is this so? Is this 0.127 hardcoded or
-            # related to some setup parameter? I am guessing this is half the
-            # zone.min_thickness setting here.
 
-            offset = self.zone_inflate + z.min_thickness*0.5
+            offset = self.zone_inflate + thickness*0.5
 
-            if not zone_holes or (
-              self.add_feature and self.make_sketch and self.zone_merge_holes):
-                obj = [obj]+zone_holes
-            elif zone_holes:
-                obj = (self._makeWires(obj,'zone_outline', label=z.net_name),
-                       self._makeWires(zone_holes,'zone_hole',label=z.net_name))
-                return self._makeArea(obj,'zone',offset=offset,
-                        op=1, fill=fill,label=z.net_name)
+            if not poly_holes \
+                    or (self.add_feature and self.make_sketch and self.zone_merge_holes):
+                obj = [obj]+poly_holes
+            elif poly_holes:
+                obj = (self._makeWires(obj,f'{name}_outline'),
+                       self._makeWires(poly_holes,f'{name}_hole'))
+                return self._makeArea(obj,name,offset=offset, op=1, fill=fill)
 
-            return self._makeWires(obj,'zone',fill=fill,
-                            offset=offset,label=z.net_name)
+            return self._makeWires(obj,name,fill=fill, offset=offset)
 
 
         def _face(obj):
@@ -1893,76 +1890,107 @@ class KicadFcad:
             raise ValueError('invalid shape type: {}'.format(shape_type))
 
         objs = []
+        for idx,p in enumerate(fields):
+            if (hasattr(p, 'layer') or hasattr(p, 'layers')) and self.filterLayer(p):
+                continue
+            poly_holes = []
+            table = {}
+            pts = SexpList(p.pts.xy)
+
+            # close the polygon
+            pts._append(p.pts.xy._get(0))
+
+            # `table` uses a pair of vertex as the key to store the index of
+            # an edge.
+            for i in range(len(pts)-1):
+                table[str((pts[i],pts[i+1]))] = i
+
+            # This is how kicad represents holes in zone polygon
+            #  ---------------------------
+            #  |    -----      ----      |
+            #  |    |   |======|  |      |
+            #  |====|   |      |  |      |
+            #  |    -----      ----      |
+            #  |                         |
+            #  ---------------------------
+            # It uses a single polygon with coincide edges of oppsite
+            # direction (shown with '=' above) to dig a hole. And one hole
+            # can lead to another, and so forth. The following `build()`
+            # function is used to recursively discover those holes, and
+            # cancel out those '=' double edges, which will surely cause
+            # problem if left alone. The algorithm assumes we start with a
+            # point of the outer polygon.
+            def build(start,end):
+                results = []
+                while start<end:
+                    # We used the reverse edge as key to search for an
+                    # identical edge of oppsite direction. NOTE: the
+                    # algorithm only works if the following assumption is
+                    # true, that those hole digging double edges are of
+                    # equal length without any branch in the middle
+                    key = str((pts[start+1],pts[start]))
+                    try:
+                        i = table[key]
+                        del table[key]
+                    except KeyError:
+                        # `KeyError` means its a normal edge, add the line.
+                        results.append(Part.makeLine(
+                            makeVect(pts[start]),makeVect(pts[start+1])))
+                        start += 1
+                        continue
+
+                    # We found the start of a double edge, treat all edges
+                    # in between as holes and recurse. Both of the double
+                    # edges are skipped.
+                    h = build(start+1,i)
+                    if h:
+                        poly_holes.append(Part.Wire(h))
+                    start = i+1
+                return results
+
+            edges = build(0,len(pts)-1)
+
+            self._log('region {}/{}, holes: {}',idx+1,count,len(poly_holes))
+
+            objs.append(func(Part.Wire(edges)))
+
+            self._popLog()
+
+        self._popLog(f'polygons done')
+        return objs
+
+    def makePolys(self,shape_type='face',thickness=0.05, fit_arcs=True, holes=False, prefix=''):
+        '''For making outlier gr_poly as if it was zone, e.g. export from Gerber viewer
+        '''
+        poly_holes = []
+        objs = self._makePolygons(getattr(self.pcb, 'gr_poly', None), 'poly',
+                                    poly_holes, shape_type, thickness, prefix)
+        if not objs:
+            return
+
+        objs = self._cutHoles(objs,holes,'polys')
+        if shape_type == 'solid':
+            objs = self._makeSolid(objs,'polys',thickness,fit_arcs=fit_arcs)
+        else:
+            objs = self._makeCompound(objs,'polys',
+                            fuse=holes,fit_arcs=fit_arcs)
+        self.setColor(objs,'zone')
+        fitView();
+        return objs
+
+    def makeZones(self,shape_type='face',thickness=0.05, fit_arcs=True,
+                    holes=False, prefix=''):
+
+        self._pushLog('making zones...',prefix=prefix)
+
+        z = None
+        zone_holes = []
+        objs = []
         for z in self.pcb.zone:
             if self.filterNets(z) or self.filterLayer(z):
                 continue
-            count = len(z.filled_polygon)
-            self._pushLog('making zone {}...', z.net_name)
-            for idx,p in enumerate(z.filled_polygon):
-                if (hasattr(p, 'layer') or hasattr(p, 'layers')) and self.filterLayer(p):
-                    continue
-                zone_holes = []
-                table = {}
-                pts = SexpList(p.pts.xy)
-
-                # close the polygon
-                pts._append(p.pts.xy._get(0))
-
-                # `table` uses a pair of vertex as the key to store the index of
-                # an edge.
-                for i in range(len(pts)-1):
-                    table[str((pts[i],pts[i+1]))] = i
-
-                # This is how kicad represents holes in zone polygon
-                #  ---------------------------
-                #  |    -----      ----      |
-                #  |    |   |======|  |      |
-                #  |====|   |      |  |      |
-                #  |    -----      ----      |
-                #  |                         |
-                #  ---------------------------
-                # It uses a single polygon with coincide edges of oppsite
-                # direction (shown with '=' above) to dig a hole. And one hole
-                # can lead to another, and so forth. The following `build()`
-                # function is used to recursively discover those holes, and
-                # cancel out those '=' double edges, which will surely cause
-                # problem if left alone. The algorithm assumes we start with a
-                # point of the outer polygon.
-                def build(start,end):
-                    results = []
-                    while start<end:
-                        # We used the reverse edge as key to search for an
-                        # identical edge of oppsite direction. NOTE: the
-                        # algorithm only works if the following assumption is
-                        # true, that those hole digging double edges are of
-                        # equal length without any branch in the middle
-                        key = str((pts[start+1],pts[start]))
-                        try:
-                            i = table[key]
-                            del table[key]
-                        except KeyError:
-                            # `KeyError` means its a normal edge, add the line.
-                            results.append(Part.makeLine(
-                                makeVect(pts[start]),makeVect(pts[start+1])))
-                            start += 1
-                            continue
-
-                        # We found the start of a double edge, treat all edges
-                        # in between as holes and recurse. Both of the double
-                        # edges are skipped.
-                        h = build(start+1,i)
-                        if h:
-                            zone_holes.append(Part.Wire(h))
-                        start = i+1
-                    return results
-
-                edges = build(0,len(pts)-1)
-
-                self._log('region {}/{}, holes: {}',idx+1,count,len(zone_holes))
-
-                objs.append(func(Part.Wire(edges)))
-
-            self._popLog()
+            objs += self._makePolygons(z.filled_polygon, 'zone', zone_holes,
+                                       shape_type, thickness, prefix)
 
         if objs:
             objs = self._cutHoles(objs,holes,'zones')
@@ -2002,7 +2030,8 @@ class KicadFcad:
 
         for (name,offset) in (('Pads',thickness),
                               ('Tracks',0.5*thickness),
-                              ('Zones',0)):
+                              ('Zones',0),
+                              ('Polys',thickness)):
 
             obj = getattr(self,'make{}'.format(name))(fit_arcs=sub_fit_arcs,
                         holes=holes,shape_type=shape_type,prefix=None,
