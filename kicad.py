@@ -23,6 +23,15 @@ if PY3:
 else:
     string_types = basestring,
 
+def _disableElementMapping(_):
+    pass
+
+disableTopoNaming = getattr(Part, 'disableElementMapping', _disableElementMapping)
+
+def addObject(doc, tp, name):
+    obj = doc.addObject(tp, name)
+    disableTopoNaming(obj)
+    return obj
 
 def updateGui():
     try:
@@ -449,7 +458,7 @@ def loadModel(filename):
     try:
         ImportGui.insert(filename,doc.Name)
         dobjs = doc.Objects[count:]
-        obj = doc.addObject('Part::Compound','tmp')
+        obj = addObject(doc,'Part::Compound','tmp')
         obj.Links = dobjs
         recomputeObj(obj)
         dobjs = [obj]+dobjs
@@ -834,7 +843,7 @@ class KicadFcad:
     def _makeObject(self,otype,name,
             label=None,links=None,shape=None):
         doc = getActiveDoc()
-        obj = doc.addObject(otype,name)
+        obj = addObject(doc,otype,name)
         self._makeLabel(obj,label)
         if links is not None:
             setattr(obj,links,shape)
@@ -861,7 +870,7 @@ class KicadFcad:
 
         doc = getActiveDoc()
 
-        nobj = doc.addObject("Sketcher::SketchObject", '{}_sketch'.format(name))
+        nobj = addObject(doc,"Sketcher::SketchObject", '{}_sketch'.format(name))
         self._makeLabel(nobj,label)
         nobj.ViewObject.Autoconstraints = False
 
