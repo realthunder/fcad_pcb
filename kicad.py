@@ -807,7 +807,7 @@ class KicadFcad:
                 and self.layer_match not in layers \
                 and '*' not in layers:
             self._log('skip layer {}, {}, {}',
-                    self.layer, self.layer_match, layers, level='log')
+                    self.layer, self.layer_match, layers, level='trace')
             return True
 
     def netName(self,p):
