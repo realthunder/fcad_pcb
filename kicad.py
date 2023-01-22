@@ -31,6 +31,11 @@ disableTopoNaming = getattr(Part, 'disableElementMapping', _disableElementMappin
 def addObject(doc, tp, name):
     obj = doc.addObject(tp, name)
     disableTopoNaming(obj)
+    try:
+        obj.ValidateShape = False
+        obj.FixShape = 0
+    except Exception:
+        pass
     return obj
 
 def updateGui():
