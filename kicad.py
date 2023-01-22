@@ -1874,7 +1874,7 @@ class KicadFcad:
             shape_type='face', thickness=0.05, prefix=''):
 
         if not fields:
-            return
+            return []
 
         count = len(fields)
         self._pushLog(f'making {count} polygons...',prefix=prefix)
