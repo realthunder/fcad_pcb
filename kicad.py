@@ -313,16 +313,17 @@ def make_gr_rect(params):
     return Part.makePolygon([start, Vector(start.x, end.y), end, Vector(end.x, start.y), start])
 
 def makePrimitve(key, params):
-    try:
-        width = getattr(params,'width',0)
-        if width and key == 'gr_circle':
-            return make_gr_circle(params, width), 0
-        else:
-            make_shape = globals()['make_{}'.format(key)]
-            return make_shape(params), width
-    except KeyError:
-        logger.warning('Unknown primitive {} in custom pad'.format(key))
-        return None, None
+    for param in SexpList(params):
+        try:
+            width = getattr(param,'width',0)
+            if width and key == 'gr_circle':
+                return make_gr_circle(param, width), 0
+            else:
+                make_shape = globals()['make_{}'.format(key)]
+                return make_shape(param), width
+        except KeyError:
+            logger.warning('Unknown primitive {} in custom pad'.format(key))
+            return None, None
 
 def makeThickLine(p1,p2,width):
     length = p1.distanceToPoint(p2)
