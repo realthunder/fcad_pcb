@@ -545,6 +545,8 @@ class KicadFcad:
             self.part_path = getKicadPath(self.path_env)
         self.pcb = KicadPCB.load(self.filename, self.quote_no_parse)
 
+        if self.pcb._key == 'footprint':
+            self.pcb._key = 'module'
         if self.pcb._key == 'module':
             # this is a kicad_mod file, make it look like a kicad_pcb
             pcb = KicadPCB(parseSexp('''
