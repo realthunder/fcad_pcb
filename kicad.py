@@ -488,7 +488,7 @@ class KicadFcad:
         self.sketch_use_draft = False
         self.sketch_radius_precision = -1
         self.holes_cache = {}
-        self.work_plane = Part.makeCircle(1)
+        self.workplane = {}
         self.active_doc_uuid = None
         self.sketch_constraint = True
         self.sketch_align_constraint = False
@@ -745,7 +745,7 @@ class KicadFcad:
     def layerOffsets(self, thickness=None):
         coppers = self._copperLayers()
         offsets = dict()
-        if not thickness:
+        if not thickness or thickness == self.board_thickness:
             for _, name in coppers:
                 offsets[name] = self._stackup_map[name][1]
             return offsets
@@ -753,11 +753,11 @@ class KicadFcad:
         if len(coppers) == 1:
             offsets[coppers[0][1]] = 0
             return offsets
-        step = thickness / (len(coppers)-1)
-        offset = 0.0
+        step = (thickness + self.copper_thickness)/ (len(coppers)-1)
+        offset = thickness
         for _,name in coppers:
             offsets[name] = offset
-            offset += step
+            offset -= step
         return offsets
 
     def setNetFilter(self,*nets):
@@ -1004,8 +1004,13 @@ class KicadFcad:
         if not isinstance(obj,(list,tuple)):
             obj = (obj,)
 
-        if self.add_feature and name:
+        if isinstance(obj[0], Part.Shape):
+            shape = obj[0]
+        else:
+            shape = Part.getShape(obj[0])
+        workplane = self.getWorkPlane(shape)
 
+        if self.add_feature and name:
             if not force and obj[0].TypeId == 'Path::FeatureArea' and (
                 obj[0].Operation == op or len(obj[0].Sources)==1) and \
                 obj[0].Fill == fill:
@@ -1022,7 +1027,7 @@ class KicadFcad:
                 ret.Fill = fill
                 ret.Offset = offset
                 ret.Coplanar = 0
-                ret.WorkPlane = self.work_plane
+                ret.WorkPlane = workplane
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
                 for o in obj:
@@ -1036,12 +1041,18 @@ class KicadFcad:
                             Reorient=reorient,
                             Accuracy=self.arc_fit_accuracy,
                             Offset=offset)
-            ret.setPlane(self.work_plane)
+            ret.setPlane(workplane)
             for o in obj:
                 ret.add(o,op=op)
             ret = ret.getShape()
         return ret
 
+    def getWorkPlane(self, shape):
+        z = shape.Vertex1.Point.z
+        workplane = self.workplane.get(z, None)
+        if not workplane:
+            workplane = self.workplane[z] = Part.makeCircle(1, Vector(0,0,z))
+        return workplane
 
     def _makeWires(self,obj,name,offset=0,fill=False,label=None, fit_arcs=False):
 
@@ -1411,6 +1422,13 @@ class KicadFcad:
         skip_count = 0
         if not offset:
             offset = self.hole_size_offset;
+
+        thickness = board_thickness
+        if not thickness:
+            thickness = self.board_thickness
+        layer_offsets = self.layerOffsets(thickness)
+        z_offset = min(layer_offsets.values())
+
         for m in self.pcb.module:
             m_at,m_angle = getAt(m)
             for p in m.pad:
@@ -1452,6 +1470,7 @@ class KicadFcad:
                 w.translate(at)
                 if m_angle:
                     w.rotate(Vector(),Vector(0,0,1),m_angle)
+                m_at.z = z_offset
                 w.translate(m_at)
         self._log('pad holes: {}, skipped: {}',count+skip_count,skip_count)
         if oval:
@@ -1463,10 +1482,6 @@ class KicadFcad:
             if skip_via or self.via_bound < 0:
                 via_skip = len(self.pcb.via)
             else:
-                thickness = board_thickness
-                if not thickness:
-                    thickness = self.board_thickness
-                layer_offsets = self.layerOffsets(board_thickness)
                 ofs = -abs(offset)
                 for v in self.pcb.via:
                     if self.filterNets(v):
@@ -1510,7 +1525,8 @@ class KicadFcad:
                     objs += o
                 for o in holes.values():
                     objs += o
-                objs = func(objs,"holes")
+                if objs:
+                    objs = func(objs,"holes")
             else:
                 for r in ((ovals,'oval'),(holes,'hole')):
                     if not r[0]:
@@ -1538,13 +1554,18 @@ class KicadFcad:
                     thickness = self.board_thickness
                 thickness += extra_thickness
                 pos = -0.01
+                if npth >= -1:
+                    # through the whole board, must add top copper thickness,
+                    # because 'board_thickness' does not include top copper
+                    # thickness.
+                    thickness += self._stackup_map['F.Cu'][2]
                 objs = self._makeSolid(objs,'holes',thickness,label=label)
                 if blind_holes:
                     objs = [objs]
                     for (_,d),o in blind_holes.items():
                         if npth >= -1:
                             d += extra_thickness
-                        objs.append(self._makeSolid(func(o,'blind'),'holes',d,label=label))
+                        objs.append(self._makeSolid(func(o,'blind'),'blind',d,label=label))
                     objs = self._makeCompound(objs,'holes',label=label)
                 self._place(objs,FreeCAD.Vector(0,0,pos))
 
@@ -2155,7 +2176,7 @@ class KicadFcad:
                 oval=True,npth=-2,board_thickness=board_thickness,extra_thickness=thickness)
             if hole_coppers:
                 self.setColor(hole_coppers,'copper')
-                self._place(hole_coppers,FreeCAD.Vector(0,0,-thickness*0.5))
+                self._place(hole_coppers,FreeCAD.Vector(0,0,thickness*0.5))
                 objs.append(hole_coppers);
 
             # connect coppers with pad with plated through holes, and fuse
@@ -2165,11 +2186,11 @@ class KicadFcad:
             if holes:
                 # make plated through holes with inward offset
                 drills = self.makeHoles(shape_type='solid',prefix=None,
-                        board_thickness=board_thickness,extra_thickness=4*thickness,
+                        board_thickness=board_thickness,extra_thickness=1.1*thickness,
                         oval=True,npth=-1,offset=thickness,
                         skip_via=self.via_skip_hole)
                 if drills:
-                    self._place(drills,FreeCAD.Vector(0,0,-thickness))
+                    self._place(drills,FreeCAD.Vector(0,0,-0.05*thickness))
                     objs = self._makeCut(objs,drills,'coppers')
                     self.setColor(objs,'copper')
 
