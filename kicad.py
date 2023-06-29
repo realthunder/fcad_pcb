@@ -23,10 +23,15 @@ if PY3:
 else:
     string_types = basestring,
 
-def _disableElementMapping(_):
-    pass
+_hasElementMapping = hasattr(Part, 'disableElementMapping')
 
-disableTopoNaming = getattr(Part, 'disableElementMapping', _disableElementMapping)
+def disableTopoNaming(obj, enable=True):
+    if _hasElementMapping:
+        if isinstance(obj, FreeCAD.DocumentObject):
+            Part.disableElementMapping(obj, enable)
+        else:
+            obj.Tag = -1 if enable else 0
+    return obj
 
 def addObject(doc, tp, name):
     obj = doc.addObject(tp, name)
@@ -37,6 +42,31 @@ def addObject(doc, tp, name):
     except Exception:
         pass
     return obj
+
+def setObjectLinks(obj, links, objs):
+    if not _hasElementMapping or not objs:
+        setattr(obj,links,objs)
+        return
+
+    if not isinstance(objs, (list,tuple)):
+        objlist = [objs,]
+    else:
+        objlist = objs
+
+    color = None
+    if isinstance(objlist[0], FreeCAD.DocumentObject):
+        color = objlist[0].ViewObject.DiffuseColor
+        for o in objlist[1:]:
+            if o.ViewObject.DiffuseColor != color:
+                for o in objlist:
+                    # re-enable topo naming to combine colors
+                    disableTopoNaming(o, False)
+                disableTopoNaming(obj, False)
+                colors = None
+                break
+    setattr(obj,links,objs)
+    if color:
+        obj.ViewObject.DiffuseColor = color
 
 def updateGui():
     try:
@@ -465,7 +495,7 @@ def loadModel(filename):
         ImportGui.insert(filename,doc.Name)
         dobjs = doc.Objects[count:]
         obj = addObject(doc,'Part::Compound','tmp')
-        obj.Links = dobjs
+        setObjectLinks(obj, 'Links', dobjs)
         recomputeObj(obj)
         dobjs = [obj]+dobjs
         obj = (obj.Shape.copy(),obj.ViewObject.DiffuseColor,mtime)
@@ -854,7 +884,7 @@ class KicadFcad:
         obj = addObject(doc,otype,name)
         self._makeLabel(obj,label)
         if links is not None:
-            setattr(obj,links,shape)
+            setObjectLinks(obj, links, shape)
             for s in shape if isinstance(shape,(list,tuple)) else (shape,):
                 if hasattr(s,'ViewObject'):
                     s.ViewObject.Visibility = False
@@ -868,6 +898,7 @@ class KicadFcad:
             getActiveDoc()
             nobj = Draft.makeSketch(objs,name=name,autoconstraints=True,
                 delete=True,radiusPrecision=self.sketch_radius_precision)
+            disableElementMapping(nobj)
             self._makeLabel(nobj,label)
             return nobj
 
@@ -1250,7 +1281,7 @@ class KicadFcad:
                 #  tol = max([o[0] for o in elist])
                 #  wire = Part.makeWires([o[1] for o in elist],'',tol,True)
 
-                wire = Part.Wire([o[1] for o in elist])
+                wire = Part.Wire([disableTopoNaming(o[1]) for o in elist])
                 #  wire.fixWire(None,tol)
                 #  wire.fix(tol,tol,tol)
             except Exception:
