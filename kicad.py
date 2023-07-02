@@ -1572,11 +1572,10 @@ class KicadFcad:
             else:
                 label='th'
 
-            if not objs:
-                self._popLog('no holes')
-                return
-
             if shape_type != 'solid':
+                if not objs:
+                    self._popLog('no holes')
+                    return
                 objs = self._makeCompound(objs,'holes',label=label)
             else:
                 if board_thickness:
@@ -1590,9 +1589,11 @@ class KicadFcad:
                     # because 'board_thickness' does not include top copper
                     # thickness.
                     thickness += self._stackup_map['F.Cu'][2]
-                objs = self._makeSolid(objs,'holes',thickness,label=label)
+                if objs:
+                    objs = self._makeSolid(objs,'holes',thickness,label=label)
                 if blind_holes:
-                    objs = [objs]
+                    if not isinstance(objs, (tuple, list)):
+                        objs = [objs] if objs else []
                     for (_,d),o in blind_holes.items():
                         if npth >= -1:
                             d += extra_thickness
