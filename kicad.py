@@ -1668,6 +1668,17 @@ class KicadFcad:
             return wires[0]
         return Part.makeCompound(wires)
 
+    def getTrackPoints(self):
+        points = set()
+        for tp,ss in (('segment',self.pcb.segment), ('arc',getattr(self.pcb, 'arc', []))):
+            for s in ss:
+                if self.filterNets(s):
+                    continue
+                if unquote(s.layer) == self.layer:
+                    points.add((s.start[0], s.start[1]))
+                    points.add((s.end[0], s.end[1]))
+        return points
+
     def makePads(self,shape_type='face',thickness=0.05,holes=False,
             fit_arcs=True,prefix=''):
 
@@ -1705,6 +1716,17 @@ class KicadFcad:
             raise ValueError('invalid shape type: {}'.format(shape_type))
 
         objs = []
+        track_points = None
+
+        def filter_unconnected(v, at):
+            if 'remove_unused_layers' in v:
+                excludes = [self.findLayers(s)[0] for s in getattr(v, 'zone_layer_connections', [])]
+                if self.layer_type not in excludes:
+                    nonlocal track_points
+                    if track_points is None:
+                        track_points = self.getTrackPoints()
+                    if not at in track_points:
+                        return True
 
         count = 0
         skip_count = 0
@@ -1777,6 +1799,7 @@ class KicadFcad:
         cut_non_closed = None
 
         via_skip = 0
+        via_unconnected = 0
         vias = []
         if self.via_bound < 0:
             via_skip = len(self.pcb.via)
@@ -1788,6 +1811,11 @@ class KicadFcad:
                         or self.filterNets(v):
                     via_skip += 1
                     continue
+
+                if filter_unconnected(v, (v.at[0], v.at[1])):
+                    via_unconnected += 1
+                    continue
+
                 if self.via_bound:
                     w = make_rect(Vector(v.size*self.via_bound,v.size*self.via_bound))
                 else:
@@ -1806,9 +1834,9 @@ class KicadFcad:
 
         self._log('footprints: {}',len(self.pcb.module))
         self._log('pads: {}, skipped: {}',count,skip_count)
-        self._log('vias: {}, skipped: {}',len(self.pcb.via),via_skip)
+        self._log('vias: {}, skipped: {}, unconnected: {}',len(self.pcb.via),via_skip,via_unconnected)
         self._log('total pads added: {}',
-                count-skip_count+len(self.pcb.via)-via_skip)
+                count-skip_count+len(self.pcb.via)-via_skip-via_unconnected)
 
         if objs:
             objs = self._cutHoles(objs,holes,'pads',fit_arcs=fit_arcs)
