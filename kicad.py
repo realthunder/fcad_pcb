@@ -1720,7 +1720,7 @@ class KicadFcad:
 
         def filter_unconnected(v, at):
             if 'remove_unused_layers' in v:
-                excludes = [self.findLayers(s)[0] for s in getattr(v, 'zone_layer_connections', [])]
+                excludes = [self.findLayer(s)[0] for s in getattr(v, 'zone_layer_connections', [])]
                 if self.layer_type not in excludes:
                     nonlocal track_points
                     if track_points is None:
