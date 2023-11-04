@@ -464,7 +464,7 @@ def getKicadPath(env=''):
                 return None
             confpath = os.path.join(confpath, subdir)
             kicad_common = os.path.join(confpath, 'kicad_common')
-            logger.warning("Checking {}".format(kicad_common))
+            logger.info("Checking {}".format(kicad_common))
             if not os.path.isfile(kicad_common):
                 kicad_common += ".json"
                 if not os.path.isfile(kicad_common):
@@ -2283,11 +2283,8 @@ class KicadFcad:
 
 
     def loadParts(self,z=0,combo=False,prefix=''):
-        #for p in self.part_paths:
         if not os.path.isdir(self.part_path):
             raise Exception('cannot find kicad package3d directory')
-
-        logger.warning("BEEP")
 
         self._pushLog('loading parts on layer {}...',self.layer,prefix=prefix)
         self._log('Kicad package3d path: {}',self.part_path)
