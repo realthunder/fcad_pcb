@@ -1115,8 +1115,8 @@ class KicadFcad:
             workplane = self.workplane[z] = Part.makeCircle(1, Vector(0,0,z))
         return workplane
 
-    def _makeWires(self,obj,name,offset=0,fill=False,label=None, fit_arcs=False):
-
+    def _makeWires(self,obj,name,offset=0,fill=False,label=None,
+                   fit_arcs=False, outline=False):
         if self.add_feature and name:
             if self.make_sketch:
                 obj = self._makeSketch(obj,name,label)
