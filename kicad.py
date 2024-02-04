@@ -853,7 +853,7 @@ class KicadFcad:
     def filterLayer(self,p):
         layers = []
         l = getattr(p, 'layers', [])
-        if l == 'F&B.Cu':
+        if unquote(l) == 'F&B.Cu':
             layers.append('F.Cu')
             layers.append('B.Cu')
         else:
