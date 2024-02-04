@@ -313,8 +313,18 @@ def make_gr_poly(params):
     points = SexpList(params.pts.xy)
     # close the polygon
     points._append(params.pts.xy._get(0))
-    # KiCAD polygon runs in clockwise, but FreeCAD wants CCW, so must reverse.
-    return Part.makePolygon([makeVect(p) for p in reversed(points)])
+
+    # It seems kicad's polygon has inconsistent winding. Use Path.Area
+    # projection to make sure we get the counter colockwise winding, otherwise
+    # it will be interpreted as a hole.
+    poly = Part.makePolygon([makeVect(p) for p in reversed(points)])
+    try:
+        area = Path.Area(Fill=True, FitArcs=False, Coplanar=0, Outline=True)
+        area.add(poly)
+        return area.getShape().Wire1
+    except Exception as e:
+        logger.warning(f'Failed to get outline of gr_poly: {str(e)}')
+        return poly
 
 def make_gr_line(params):
     return Part.makeLine(makeVect(params.start),makeVect(params.end))
@@ -343,18 +353,17 @@ def make_gr_rect(params):
     end = makeVect(params.end)
     return Part.makePolygon([start, Vector(start.x, end.y), end, Vector(end.x, start.y), start])
 
-def makePrimitve(key, params):
-    for param in SexpList(params):
-        try:
-            width = getattr(param,'width',0)
-            if width and key == 'gr_circle':
-                return make_gr_circle(param, width), 0
-            else:
-                make_shape = globals()['make_{}'.format(key)]
-                return make_shape(param), width
-        except KeyError:
-            logger.warning('Unknown primitive {} in custom pad'.format(key))
-            return None, None
+def makePrimitve(key, param):
+    try:
+        width = getattr(param,'width',0)
+        if width and key == 'gr_circle':
+            return make_gr_circle(param, width), 0
+        else:
+            make_shape = globals()['make_{}'.format(key)]
+            return make_shape(param), width
+    except KeyError:
+        logger.warning('Unknown primitive {} in custom pad'.format(key))
+        return None, None
 
 def makeThickLine(p1,p2,width):
     length = p1.distanceToPoint(p2)
@@ -1043,7 +1052,7 @@ class KicadFcad:
 
 
     def _makeArea(self,obj,name,offset=0,op=0,fill=None,label=None,
-                force=False,fit_arcs=False,reorient=False):
+                force=False,fit_arcs=False,reorient=False,outline=False):
         if fill is None:
             fill = 2
         elif fill:
@@ -1080,6 +1089,7 @@ class KicadFcad:
                 ret.WorkPlane = workplane
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
+                ret.Outline = outline
                 for o in obj:
                     o.ViewObject.Visibility = False
 
@@ -1090,7 +1100,8 @@ class KicadFcad:
                             Coplanar=0,
                             Reorient=reorient,
                             Accuracy=self.arc_fit_accuracy,
-                            Offset=offset)
+                            Offset=offset,
+                            Outline=outline)
             ret.setPlane(workplane)
             for o in obj:
                 ret.add(o,op=op)
@@ -1126,9 +1137,9 @@ class KicadFcad:
                             '{}_wire'.format(name),label,'Shape',comp))
                 obj = objs
 
-        if fill or offset:
+        if outline or fill or offset:
             return self._makeArea(obj,name,offset=offset,fill=fill,
-                    fit_arcs=fit_arcs,label=label)
+                    fit_arcs=fit_arcs,label=label,outline=outline)
         else:
             return self._makeCompound(obj,name,label=label)
 
@@ -1672,15 +1683,23 @@ class KicadFcad:
 
     def _makeCustomPad(self, params):
         wires = []
+        anchor = getattr(getattr(params, 'options', None), 'anchor', None)
+        if anchor in ('rect', 'circle'):
+            w = globals()[f'make_{anchor}'](Vector(*params.size))
+            wires.append(w)
+
         for key in params.primitives:
-            wire,width = makePrimitve(key, getattr(params.primitives, key))
-            if not width:
-                if isinstance(wire, Part.Edge):
-                    wire = Part.Wire(wire)
-                wires.append(wire)
-            else:
-                wire = self._makeWires(wire, name=None, offset=width*0.5)
-                wires += wire.Wires
+            primitives = SexpList(getattr(params.primitives, key))
+            self._log(f'making {len(primitives)} {key}s')
+            for param in primitives:
+                wire,width = makePrimitve(key, param)
+                if not width:
+                    if isinstance(wire, Part.Edge):
+                        wire = Part.Wire(wire)
+                    wires.append(wire)
+                else:
+                    wire = self._makeWires(wire, name=None, offset=width*0.5)
+                    wires += wire.Wires
         if not wires:
             return
         if len(wires) == 1:
@@ -1802,7 +1821,7 @@ class KicadFcad:
 
                 if not self.merge_pads:
                     pads.append(func(w,'pad',
-                        '{}#{}#{}#{}#{}'.format(i,j,p[0],ref,self.netName(p))))
+                        f'{i}#{j}#{p[0]}#{ref}#{self.netName(p)}#{shape}'))
                 else:
                     pads.append(w)
 
