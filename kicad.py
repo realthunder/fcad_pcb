@@ -606,9 +606,10 @@ class KicadFcad:
         if self.pcb._key == 'footprint':
             self.pcb._key = 'module'
         if self.pcb._key == 'module':
+            self.module = self.pcb
+
             # this is a kicad_mod file, make it look like a kicad_pcb
-            pcb = KicadPCB(parseSexp('''
-                    (kicad_pcb
+            board = '''(kicad_pcb
                         (general
                             (thickness 0.3)
                             (drawings 0)
@@ -638,11 +639,11 @@ class KicadFcad:
                             (47 F.CrtYd user)
                             (48 B.Fab user)
                             (49 F.Fab user)
-                        )
-                    )'''))
-            self.module = self.pcb
-            pcb.module._append(self.pcb)
-            self.pcb = pcb
+                        )'''
+            with open(self.filename) as f:
+                board += f.read() + '\n)'
+
+            self.pcb = KicadPCB(parseSexp(board, self.quote_no_parse))
         else:
             self.module = None
 
