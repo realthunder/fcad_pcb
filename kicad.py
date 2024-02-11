@@ -555,6 +555,8 @@ class KicadFcad:
         self.merge_tracks = not debug
         self.zone_merge_holes = not debug
         self.merge_pads = not debug
+        self.castellated = False
+        self.refine = False
         self.arc_fit_accuracy = 0.0005
         self.layer_thickness = 0.01
         self.copper_thickness = 0.05
@@ -677,6 +679,9 @@ class KicadFcad:
             for n in self.pcb.net:
                 self.net_names[n[0]] = n[1]
             self.setNetFilter(*self.nets)
+
+        self.board_face = None
+        self.board_uid = None
 
     def findLayer(self,layer, deftype=None):
         try:
@@ -1174,6 +1179,7 @@ class KicadFcad:
         if self.add_feature:
             self._log('making fuse {}...',name)
             obj =  self._makeObject('Part::MultiFuse',name,label,'Shapes',obj)
+            obj.Refine = self.refine
             self._log('fuse done')
             return obj
 
@@ -1184,6 +1190,8 @@ class KicadFcad:
         if solids:
             self._log('making fuse {}...',name)
             obj = solids[0].multiFuse(solids[1:])
+            if self.refine:
+                obj = obj.removeSplitter()
             self._log('fuse done')
             return obj
 
@@ -1197,12 +1205,15 @@ class KicadFcad:
             cut = self._makeObject('Part::Cut',name,label=label)
             cut.Base = base
             cut.Tool = tool
+            cut.Refine = self.refine
             base.ViewObject.Visibility = False
             tool.ViewObject.Visibility = False
             recomputeObj(cut)
             cut.ViewObject.ShapeColor = base.ViewObject.ShapeColor
         else:
             cut = base.cut(tool)
+            if self.refine:
+                cut = cut.removeSplitter()
         self._log('cut done')
         return cut
 
@@ -1333,8 +1344,23 @@ class KicadFcad:
                     if w > 5e-7:
                         wires.append(self._makeWires(e, name=None, offset=w*0.5))
 
+    def intersectBoard(self, objs, name, fit_arcs=True):
+        if not objs:
+            return objs
+        if self.add_feature and self.board_uid != getActiveDoc().Uid:
+            self.board_face = None
+        if not self.board_face:
+            self.board_face = self.makeBoard(shape_type='face', holes=False, single_layer=True)
+            if self.add_feature:
+                self.board_face.Visibility = False
+                self.board_uid = self.board_face.Document.Uid
+
+        objs = (self._makeCompound(objs,name,label='castellated'),self.board_face)
+        # op=2 for intersection
+        return self._makeArea(objs,name,op=2,label='castellated',fit_arcs=fit_arcs)
+
     def makeBoard(self,shape_type='solid',thickness=None,fit_arcs=True,
-            holes=True, minHoleSize=0,ovalHole=True,prefix=''):
+            holes=True, minHoleSize=0, ovalHole=True, prefix='', single_layer=False):
 
         non_closed = defaultdict(list)
         wires = []
@@ -1429,7 +1455,7 @@ class KicadFcad:
                     obj.ViewObject.MapFaceColor = False
                 obj.ViewObject.ShapeColor = self.colors['board']
 
-            if len(layers) > 1:
+            if len(layers) > 1 and not single_layer:
                 objs = [obj]
                 for offset, t in layers[1:]:
                     if abs(t - layers[0][1]) < 1e-7:
@@ -1457,7 +1483,7 @@ class KicadFcad:
 
     def makeHoles(self,shape_type='wire',minSize=0,maxSize=0,
             oval=False,prefix='',offset=0.0,npth=0,skip_via=False,
-            board_thickness=None,extra_thickness=0.0):
+            board_thickness=None,extra_thickness=0.0,castellated=False):
 
         self._pushLog('making holes...',prefix=prefix)
 
@@ -1602,6 +1628,9 @@ class KicadFcad:
                 label='npth'
             else:
                 label='th'
+
+            if castellated:
+                objs = self.intersectBoard(objs, 'holes', fit_arcs=True)
 
             if shape_type != 'solid':
                 if not objs:
@@ -1882,6 +1911,8 @@ class KicadFcad:
                 count-skip_count+len(self.pcb.via)-via_skip-via_unconnected)
 
         if objs:
+            if self.castellated:
+                objs = self.intersectBoard(objs, 'pads', fit_arcs=fit_arcs)
             objs = self._cutHoles(objs,holes,'pads',fit_arcs=fit_arcs)
             if shape_type=='solid':
                 objs = self._makeSolid(objs,'pads', thickness,
@@ -1981,6 +2012,8 @@ class KicadFcad:
                 objs.append(func(edges,label=label))
 
         if objs:
+            if self.castellated:
+                objs = self.intersectBoard(objs, 'tracks', fit_arcs=fit_arcs)
             objs = self._cutHoles(objs,holes,'tracks',fit_arcs=fit_arcs)
 
             if shape_type == 'solid':
@@ -2134,6 +2167,8 @@ class KicadFcad:
                                        shape_type, thickness, prefix)
 
         if objs:
+            if self.castellated:
+                objs = self.intersectBoard(objs, 'zones', fit_arcs=fit_arcs)
             objs = self._cutHoles(objs,holes,'zones')
             if shape_type == 'solid':
                 objs = self._makeSolid(objs,'zones',thickness,fit_arcs=fit_arcs)
@@ -2276,7 +2311,8 @@ class KicadFcad:
         if shape_type=='solid' and fuse:
             # make copper for plated through holes
             hole_coppers = self.makeHoles(shape_type='solid',prefix=None,
-                oval=True,npth=-2,board_thickness=board_thickness,extra_thickness=thickness)
+                oval=True,npth=-2,board_thickness=board_thickness,
+                extra_thickness=thickness,castellated=self.castellated)
             if hole_coppers:
                 self.setColor(hole_coppers,'copper')
                 self._place(hole_coppers,FreeCAD.Vector(0,0,thickness*0.5))
