@@ -677,7 +677,7 @@ class KicadFcad:
         self.net_names = dict()
         if 'net' in self.pcb:
             for n in self.pcb.net:
-                self.net_names[n[0]] = n[1]
+                self.net_names[n[0]] = n[1].strip('"')
             self.setNetFilter(*self.nets)
 
         self.board_face = None
@@ -829,7 +829,7 @@ class KicadFcad:
         ndict = dict()
         nset = set()
         for n in self.pcb.net:
-            ndict[n[1]] = n[0]
+            ndict[n[1].strip('"')] = n[0]
             nset.add(n[0])
 
         for n in nets:
