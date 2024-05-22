@@ -1803,7 +1803,7 @@ class KicadFcad:
 
         count = 0
         pad_count = 0
-        pad_num = {}
+        pad_locations = {}
         skip_count = 0
         for i,m in enumerate(self.pcb.module):
             ref = ''
@@ -1845,6 +1845,7 @@ class KicadFcad:
                 # kicad put pad shape offset inside drill element? Why?
                 if 'drill' in p and 'offset' in p.drill:
                     w.translate(makeVect(p.drill.offset))
+                # if we call the function to make pads for the face, we save the pad locations
                 elif shape_type == 'face' and thickness is not None and board_thickness is not None:
                     if m.layer.strip('"') == 'F.Cu':
                         offset = board_thickness + thickness
@@ -1866,18 +1867,15 @@ class KicadFcad:
                 w_tmp = w
                 self._place(w_tmp,m_at,m_angle)
                 location = w_tmp.Placement.Base
-                # print(location)
+                # save the location of the pad for future reference
                 part = ref.strip('"')    
                 pin = p[0].strip('"')
                 net = self.netName(p).strip('"')
-                pad_num[f'{part}_{pin}'] = f'{net}_{location}'
+                pad_locations[f'{part}_{pin}'] = f'{net}_{location}'
                 pad_count += 1
 
 
-            self._makeShape(m, 'fp', pads)
-             # save the names and labels of the pads for future reference
-            with open('/home/asepahvand/repo/voltage_divider/pad_num_location.json', 'w') as f:
-                json.dump(pad_num, f, indent=4)
+            self._makeShape(m, 'fp', pads)            
 
             if not pads:
                 continue
@@ -1888,7 +1886,13 @@ class KicadFcad:
                 obj = func(pads,'pads','{}#{}'.format(i,ref))
             self._place(obj,m_at,m_angle)
             objs.append(obj)
-
+        # if we call the function to make pads for the face, we save the pad locations
+        if shape_type == 'face' and thickness is not None and board_thickness is not None:
+            # save the names and labels of the pads for future reference
+            file = self.filename.split('.kicad_pcb')[0] + '_pad_locations.json'
+            print(file)
+            with open(file, 'w') as f:
+                json.dump(pad_locations, f, indent=4)
         cut_wires = None
         cut_non_closed = None
 
