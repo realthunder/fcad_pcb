@@ -832,7 +832,6 @@ class KicadFcad:
         for n in self.pcb.net:
             ndict[n[1].strip('"')] = n[0]
             nset.add(n[0])
-            logger.info('net {} {}'.format(n[0],n[1].strip('"')))
 
         for n in nets:
             try:
@@ -921,10 +920,9 @@ class KicadFcad:
         self._makeLabel(obj,label)
         if links is not None:
             setObjectLinks(obj, links, shape)
-            for s in shape if isinstance(shape,(list,tuple)) else (shape,):
-                if hasattr(s,'ViewObject'):
-                    # s.ViewObject.Visibility = False
-                    pass
+            # for s in shape if isinstance(shape,(list,tuple)) else (shape,):
+                # if hasattr(s,'ViewObject'):
+                #     s.ViewObject.Visibility = False
             if hasattr(obj,'recompute'):
                 recomputeObj(obj)
         return obj
@@ -948,7 +946,7 @@ class KicadFcad:
 
         nobj = addObject(doc,"Sketcher::SketchObject", '{}_sketch'.format(name))
         self._makeLabel(nobj,label)
-        nobj.ViewObject.Autoconstraints = False
+        # nobj.ViewObject.Autoconstraints = False
 
         radiuses = {}
         constraints = []
@@ -1049,13 +1047,14 @@ class KicadFcad:
                not fuse or obj.TypeId=='Path::FeatureArea'):
                 return obj
             obj = [obj]
+
         if fuse:
             return self._makeArea(obj,name,label=label,fit_arcs=fit_arcs)
-            # return self._makeFuse(obj,name,label=label)
 
         if add_feature or self.add_feature:
             return self._makeObject('Part::Compound',
                     '{}_combo'.format(name),label,'Links',obj)
+
         return Part.makeCompound(obj)
 
 
@@ -1098,9 +1097,8 @@ class KicadFcad:
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
                 ret.Outline = outline
-                for o in obj:
-                    # o.ViewObject.Visibility = False
-                    pass
+                # for o in obj:
+                #     o.ViewObject.Visibility = False
 
             recomputeObj(ret)
         else:
@@ -1355,7 +1353,7 @@ class KicadFcad:
         if not self.board_face:
             self.board_face = self.makeBoard(shape_type='face', holes=False, single_layer=True)
             if self.add_feature:
-                # self.board_face.Visibility = False
+                self.board_face.Visibility = False
                 self.board_uid = self.board_face.Document.Uid
 
         objs = (self._makeCompound(objs,name,label='castellated'),self.board_face)
@@ -1453,9 +1451,9 @@ class KicadFcad:
 
             thickness = layers[0][1]
             obj = func()
-            if self.add_feature:
-                if hasattr(obj.ViewObject,'MapFaceColor'):
-                    obj.ViewObject.MapFaceColor = False
+            # if self.add_feature:
+                # if hasattr(obj.ViewObject,'MapFaceColor'):
+                #     obj.ViewObject.MapFaceColor = False
                 # obj.ViewObject.ShapeColor = self.colors['board']
 
             if len(layers) > 1 and not single_layer:
@@ -1470,9 +1468,9 @@ class KicadFcad:
                     else:
                         obj = self._makeSolid(base[0], 'board', t)
                     self._place(obj,Vector(0,0,offset))
-                    if self.add_feature:
-                        if hasattr(obj.ViewObject,'MapFaceColor'):
-                            obj.ViewObject.MapFaceColor = False
+                    # if self.add_feature:
+                        # if hasattr(obj.ViewObject,'MapFaceColor'):
+                        #     obj.ViewObject.MapFaceColor = False
                         # obj.ViewObject.ShapeColor = self.colors['board']
                     objs.append(obj)
                 obj = self._makeCompound(objs, 'board')
@@ -1751,42 +1749,8 @@ class KicadFcad:
         return points
 
     def makePads(self,shape_type='face',thickness=0.05,holes=False,
-            fit_arcs=True,prefix='', fea_bndy=False, board_thickness=None):
-        layer_save = self.layer
-        objs = []
-        layers = []
-        thicknesses = []
-        offsets = []
-        if not board_thickness or not thickness:
-            for layer, name in self._copperLayers():
-                layers.append(layer)
-                _,offset, t = self._stackup_map[name]
-                offsets.append(offset)
-                thicknesses.append(t)
-        else:
-            for layer, name in self._copperLayers():
-                layers.append(layer)
-                if not hasattr(thickness,'get'):
-                    thicknesses.append(float(thickness))
-                else:
-                    for key in (layer, str(layer), name, None, ''):
-                        try:
-                            thicknesses.append(float(thickness.get(key)))
-                            break
-                        except Exception:
-                            pass
-                if not len(layers) == len(thicknesses):
-                    raise RuntimeError('No copper thickness found for layer ' % name)
+            fit_arcs=True,prefix='', board_thickness=None):
 
-            if len(layers) == 1:
-                z_step = 0
-            else:
-                z_step = (board_thickness+thicknesses[-1])/(len(layers)-1)
-            offsets = [ board_thickness - i*z_step for i,_ in enumerate(layers) ]
-
-        thickness = max(thicknesses)
-        # make a dictionary to store the pad number along with the name and label
-        pad_num = {}
         self._pushLog('making pads...',prefix=prefix)
 
         def _wire(obj,name,label=None,fill=False):
@@ -1839,6 +1803,7 @@ class KicadFcad:
 
         count = 0
         pad_count = 0
+        pad_num = {}
         skip_count = 0
         for i,m in enumerate(self.pcb.module):
             ref = ''
@@ -1880,35 +1845,37 @@ class KicadFcad:
                 # kicad put pad shape offset inside drill element? Why?
                 if 'drill' in p and 'offset' in p.drill:
                     w.translate(makeVect(p.drill.offset))
+                elif shape_type == 'face' and thickness is not None and board_thickness is not None:
+                    if m.layer.strip('"') == 'F.Cu':
+                        offset = board_thickness + thickness
+                    else:
+                        offset = -thickness
+                    self._place(w,Vector(0,0,offset))
+
                 at,angle = getAt(p)
                 angle -= m_angle;
                 if not isZero(angle):
                     w.rotate(Vector(),Vector(0,0,1),angle)
                 w.translate(at)
-                if fea_bndy:
-                    # fea boundary is on the top of the board only
-                    self._place(w,m_at,m_angle)
-                    if m.layer.strip('"') == 'F.Cu':
-                        offset = offsets[0] + thicknesses[0]
-                    else:
-                        offset = offsets[0]
-                    self._place(w,Vector(0,0,offset))
-
 
                 if not self.merge_pads:
                     pads.append(func(w,'pad',
-                        f'{i}#{j}#{p[0]}#{ref}#{self.netName(p)}#{shape}'))                
+                        f'{i}#{j}#{p[0]}#{ref}#{self.netName(p)}#{shape}'))
                 else:
                     pads.append(w)
+                w_tmp = w
+                self._place(w_tmp,m_at,m_angle)
+                location = w_tmp.Placement.Base
+                # print(location)
                 part = ref.strip('"')    
                 pin = p[0].strip('"')
                 net = self.netName(p).strip('"')
-                location = str(at)           
                 pad_num[f'{part}_{pin}'] = f'{net}_{location}'
                 pad_count += 1
+
+
             self._makeShape(m, 'fp', pads)
-            
-            # save the names and labels of the pads for future reference
+             # save the names and labels of the pads for future reference
             with open('/home/asepahvand/repo/voltage_divider/pad_num_location.json', 'w') as f:
                 json.dump(pad_num, f, indent=4)
 
@@ -1989,8 +1956,8 @@ class KicadFcad:
             color = self.colors[otype][self.layer_type]
         except KeyError:
             color = self.colors[otype][0]
-        if hasattr(obj.ViewObject,'MapFaceColor'):
-            obj.ViewObject.MapFaceColor = False
+        # if hasattr(obj.ViewObject,'MapFaceColor'):
+        #     obj.ViewObject.MapFaceColor = False
         # obj.ViewObject.ShapeColor = color
 
 
@@ -2450,7 +2417,7 @@ class KicadFcad:
                         obj = self._makeObject('Part::Feature','model',
                             label='{}#{}#{}'.format(module_idx,model_idx,ref),
                             links='Shape',shape=mobj[0])
-                        obj.ViewObject.DiffuseColor = mobj[1]
+                        # obj.ViewObject.DiffuseColor = mobj[1]
                         obj.Placement = pln
                         objs.append(obj)
                     self._log('loaded')
@@ -2580,4 +2547,3 @@ def test(names=''):
         pcb.make(fuseCoppers=True)
         pcb.add_feature = False
         Part.show(pcb.make())
-
