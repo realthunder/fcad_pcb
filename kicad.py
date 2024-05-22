@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division,
 from collections import defaultdict
 from math import sqrt, atan2, degrees, sin, cos, radians, pi, hypot
 import traceback
+import json
 import FreeCAD
 import FreeCADGui
 import Part
@@ -677,7 +678,7 @@ class KicadFcad:
         self.net_names = dict()
         if 'net' in self.pcb:
             for n in self.pcb.net:
-                self.net_names[n[0]] = n[1].strip('"')
+                self.net_names[n[0]] = n[1]
             self.setNetFilter(*self.nets)
 
         self.board_face = None
@@ -831,6 +832,7 @@ class KicadFcad:
         for n in self.pcb.net:
             ndict[n[1].strip('"')] = n[0]
             nset.add(n[0])
+            logger.info('net {} {}'.format(n[0],n[1].strip('"')))
 
         for n in nets:
             try:
@@ -921,7 +923,8 @@ class KicadFcad:
             setObjectLinks(obj, links, shape)
             for s in shape if isinstance(shape,(list,tuple)) else (shape,):
                 if hasattr(s,'ViewObject'):
-                    s.ViewObject.Visibility = False
+                    # s.ViewObject.Visibility = False
+                    pass
             if hasattr(obj,'recompute'):
                 recomputeObj(obj)
         return obj
@@ -1046,14 +1049,13 @@ class KicadFcad:
                not fuse or obj.TypeId=='Path::FeatureArea'):
                 return obj
             obj = [obj]
-
         if fuse:
             return self._makeArea(obj,name,label=label,fit_arcs=fit_arcs)
+            # return self._makeFuse(obj,name,label=label)
 
         if add_feature or self.add_feature:
             return self._makeObject('Part::Compound',
                     '{}_combo'.format(name),label,'Links',obj)
-
         return Part.makeCompound(obj)
 
 
@@ -1097,7 +1099,8 @@ class KicadFcad:
                 ret.Reorient = reorient
                 ret.Outline = outline
                 for o in obj:
-                    o.ViewObject.Visibility = False
+                    # o.ViewObject.Visibility = False
+                    pass
 
             recomputeObj(ret)
         else:
@@ -1162,7 +1165,7 @@ class KicadFcad:
                                     '{}_solid'.format(name),label)
         nobj.Base = obj
         nobj.Dir = Vector(0,0,height)
-        obj.ViewObject.Visibility = False
+        # obj.ViewObject.Visibility = False
         recomputeObj(nobj)
         return nobj
 
@@ -1206,10 +1209,10 @@ class KicadFcad:
             cut.Base = base
             cut.Tool = tool
             cut.Refine = self.refine
-            base.ViewObject.Visibility = False
-            tool.ViewObject.Visibility = False
+            # base.ViewObject.Visibility = False
+            # tool.ViewObject.Visibility = False
             recomputeObj(cut)
-            cut.ViewObject.ShapeColor = base.ViewObject.ShapeColor
+            # cut.ViewObject.ShapeColor = base.ViewObject.ShapeColor
         else:
             cut = base.cut(tool)
             if self.refine:
@@ -1352,7 +1355,7 @@ class KicadFcad:
         if not self.board_face:
             self.board_face = self.makeBoard(shape_type='face', holes=False, single_layer=True)
             if self.add_feature:
-                self.board_face.Visibility = False
+                # self.board_face.Visibility = False
                 self.board_uid = self.board_face.Document.Uid
 
         objs = (self._makeCompound(objs,name,label='castellated'),self.board_face)
@@ -1453,7 +1456,7 @@ class KicadFcad:
             if self.add_feature:
                 if hasattr(obj.ViewObject,'MapFaceColor'):
                     obj.ViewObject.MapFaceColor = False
-                obj.ViewObject.ShapeColor = self.colors['board']
+                # obj.ViewObject.ShapeColor = self.colors['board']
 
             if len(layers) > 1 and not single_layer:
                 objs = [obj]
@@ -1470,7 +1473,7 @@ class KicadFcad:
                     if self.add_feature:
                         if hasattr(obj.ViewObject,'MapFaceColor'):
                             obj.ViewObject.MapFaceColor = False
-                        obj.ViewObject.ShapeColor = self.colors['board']
+                        # obj.ViewObject.ShapeColor = self.colors['board']
                     objs.append(obj)
                 obj = self._makeCompound(objs, 'board')
         finally:
@@ -1748,8 +1751,42 @@ class KicadFcad:
         return points
 
     def makePads(self,shape_type='face',thickness=0.05,holes=False,
-            fit_arcs=True,prefix=''):
+            fit_arcs=True,prefix='', fea_bndy=False, board_thickness=None):
+        layer_save = self.layer
+        objs = []
+        layers = []
+        thicknesses = []
+        offsets = []
+        if not board_thickness or not thickness:
+            for layer, name in self._copperLayers():
+                layers.append(layer)
+                _,offset, t = self._stackup_map[name]
+                offsets.append(offset)
+                thicknesses.append(t)
+        else:
+            for layer, name in self._copperLayers():
+                layers.append(layer)
+                if not hasattr(thickness,'get'):
+                    thicknesses.append(float(thickness))
+                else:
+                    for key in (layer, str(layer), name, None, ''):
+                        try:
+                            thicknesses.append(float(thickness.get(key)))
+                            break
+                        except Exception:
+                            pass
+                if not len(layers) == len(thicknesses):
+                    raise RuntimeError('No copper thickness found for layer ' % name)
 
+            if len(layers) == 1:
+                z_step = 0
+            else:
+                z_step = (board_thickness+thicknesses[-1])/(len(layers)-1)
+            offsets = [ board_thickness - i*z_step for i,_ in enumerate(layers) ]
+
+        thickness = max(thicknesses)
+        # make a dictionary to store the pad number along with the name and label
+        pad_num = {}
         self._pushLog('making pads...',prefix=prefix)
 
         def _wire(obj,name,label=None,fill=False):
@@ -1801,6 +1838,7 @@ class KicadFcad:
                     return True
 
         count = 0
+        pad_count = 0
         skip_count = 0
         for i,m in enumerate(self.pcb.module):
             ref = ''
@@ -1842,20 +1880,37 @@ class KicadFcad:
                 # kicad put pad shape offset inside drill element? Why?
                 if 'drill' in p and 'offset' in p.drill:
                     w.translate(makeVect(p.drill.offset))
-
                 at,angle = getAt(p)
                 angle -= m_angle;
                 if not isZero(angle):
                     w.rotate(Vector(),Vector(0,0,1),angle)
                 w.translate(at)
+                if fea_bndy:
+                    # fea boundary is on the top of the board only
+                    self._place(w,m_at,m_angle)
+                    if m.layer.strip('"') == 'F.Cu':
+                        offset = offsets[0] + thicknesses[0]
+                    else:
+                        offset = offsets[0]
+                    self._place(w,Vector(0,0,offset))
+
 
                 if not self.merge_pads:
                     pads.append(func(w,'pad',
-                        f'{i}#{j}#{p[0]}#{ref}#{self.netName(p)}#{shape}'))
+                        f'{i}#{j}#{p[0]}#{ref}#{self.netName(p)}#{shape}'))                
                 else:
                     pads.append(w)
-
+                part = ref.strip('"')    
+                pin = p[0].strip('"')
+                net = self.netName(p).strip('"')
+                location = str(at)           
+                pad_num[f'{part}_{pin}'] = f'{net}_{location}'
+                pad_count += 1
             self._makeShape(m, 'fp', pads)
+            
+            # save the names and labels of the pads for future reference
+            with open('/home/asepahvand/repo/voltage_divider/pad_num_location.json', 'w') as f:
+                json.dump(pad_num, f, indent=4)
 
             if not pads:
                 continue
@@ -1936,7 +1991,7 @@ class KicadFcad:
             color = self.colors[otype][0]
         if hasattr(obj.ViewObject,'MapFaceColor'):
             obj.ViewObject.MapFaceColor = False
-        obj.ViewObject.ShapeColor = color
+        # obj.ViewObject.ShapeColor = color
 
 
     def makeTracks(self,shape_type='face',fit_arcs=True,
