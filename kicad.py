@@ -1846,7 +1846,7 @@ class KicadFcad:
                 if 'drill' in p and 'offset' in p.drill:
                     w.translate(makeVect(p.drill.offset))
                 # if we call the function to make pads for the face, we save the pad locations
-                elif shape_type == 'face' and thickness is not None and board_thickness is not None:
+                elif thickness is not None and board_thickness is not None:
                     if m.layer.strip('"') == 'F.Cu':
                         offset = board_thickness + thickness
                     else:
@@ -1865,7 +1865,11 @@ class KicadFcad:
                 else:
                     pads.append(w)
                 w_tmp = w
-                self._place(w_tmp,m_at,m_angle)
+                if shape_type == 'solid' and thickness is not None and board_thickness is not None:
+                    m_at_tmp = m_at+Vector(0,0,thickness) # make ti such that we get the locaion of the upper surface of the pad
+                else:
+                    m_at_tmp = m_at
+                self._place(w_tmp,m_at_tmp,m_angle)
                 location = w_tmp.Placement.Base
                 # save the location of the pad for future reference
                 part = ref.strip('"')    
@@ -1887,7 +1891,7 @@ class KicadFcad:
             self._place(obj,m_at,m_angle)
             objs.append(obj)
         # if we call the function to make pads for the face, we save the pad locations
-        if shape_type == 'face' and thickness is not None and board_thickness is not None:
+        if thickness is not None and board_thickness is not None:
             # save the names and labels of the pads for future reference
             file = self.filename.split('.kicad_pcb')[0] + '_pad_locations.json'
             print(file)
