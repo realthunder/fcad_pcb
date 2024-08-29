@@ -1287,9 +1287,12 @@ class KicadFcad:
             w,e,pstart,pend = edges.pop(-1)
             wstart = wend = w
             elist = [(w,e)]
-            closed = False
+            if pstart.distanceToPoint(pend) <= (wstart+w)/2:
+                closed = True
+            else:
+                closed = False
             i = 0
-            while i < len(edges):
+            while not closed and i < len(edges):
                 w,e,ps,pe = edges[i]
                 if pstart.distanceToPoint(ps) <= (wstart+w)/2:
                     e.reverse()
