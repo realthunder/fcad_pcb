@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division,
 from collections import defaultdict
 from math import sqrt, atan2, degrees, sin, cos, radians, pi, hypot
 import traceback
+import json
 import FreeCAD
 import FreeCADGui
 import Part
@@ -829,7 +830,7 @@ class KicadFcad:
         ndict = dict()
         nset = set()
         for n in self.pcb.net:
-            ndict[n[1]] = n[0]
+            ndict[n[1].strip('"')] = n[0]
             nset.add(n[0])
 
         for n in nets:
@@ -919,9 +920,9 @@ class KicadFcad:
         self._makeLabel(obj,label)
         if links is not None:
             setObjectLinks(obj, links, shape)
-            for s in shape if isinstance(shape,(list,tuple)) else (shape,):
-                if hasattr(s,'ViewObject'):
-                    s.ViewObject.Visibility = False
+            # for s in shape if isinstance(shape,(list,tuple)) else (shape,):
+                # if hasattr(s,'ViewObject'):
+                #     s.ViewObject.Visibility = False
             if hasattr(obj,'recompute'):
                 recomputeObj(obj)
         return obj
@@ -945,7 +946,7 @@ class KicadFcad:
 
         nobj = addObject(doc,"Sketcher::SketchObject", '{}_sketch'.format(name))
         self._makeLabel(nobj,label)
-        nobj.ViewObject.Autoconstraints = False
+        # nobj.ViewObject.Autoconstraints = False
 
         radiuses = {}
         constraints = []
@@ -1096,8 +1097,8 @@ class KicadFcad:
                 ret.FitArcs = fit_arcs
                 ret.Reorient = reorient
                 ret.Outline = outline
-                for o in obj:
-                    o.ViewObject.Visibility = False
+                # for o in obj:
+                #     o.ViewObject.Visibility = False
 
             recomputeObj(ret)
         else:
@@ -1162,7 +1163,7 @@ class KicadFcad:
                                     '{}_solid'.format(name),label)
         nobj.Base = obj
         nobj.Dir = Vector(0,0,height)
-        obj.ViewObject.Visibility = False
+        # obj.ViewObject.Visibility = False
         recomputeObj(nobj)
         return nobj
 
@@ -1206,10 +1207,10 @@ class KicadFcad:
             cut.Base = base
             cut.Tool = tool
             cut.Refine = self.refine
-            base.ViewObject.Visibility = False
-            tool.ViewObject.Visibility = False
+            # base.ViewObject.Visibility = False
+            # tool.ViewObject.Visibility = False
             recomputeObj(cut)
-            cut.ViewObject.ShapeColor = base.ViewObject.ShapeColor
+            # cut.ViewObject.ShapeColor = base.ViewObject.ShapeColor
         else:
             cut = base.cut(tool)
             if self.refine:
@@ -1453,10 +1454,10 @@ class KicadFcad:
 
             thickness = layers[0][1]
             obj = func()
-            if self.add_feature:
-                if hasattr(obj.ViewObject,'MapFaceColor'):
-                    obj.ViewObject.MapFaceColor = False
-                obj.ViewObject.ShapeColor = self.colors['board']
+            # if self.add_feature:
+                # if hasattr(obj.ViewObject,'MapFaceColor'):
+                #     obj.ViewObject.MapFaceColor = False
+                # obj.ViewObject.ShapeColor = self.colors['board']
 
             if len(layers) > 1 and not single_layer:
                 objs = [obj]
@@ -1470,10 +1471,10 @@ class KicadFcad:
                     else:
                         obj = self._makeSolid(base[0], 'board', t)
                     self._place(obj,Vector(0,0,offset))
-                    if self.add_feature:
-                        if hasattr(obj.ViewObject,'MapFaceColor'):
-                            obj.ViewObject.MapFaceColor = False
-                        obj.ViewObject.ShapeColor = self.colors['board']
+                    # if self.add_feature:
+                        # if hasattr(obj.ViewObject,'MapFaceColor'):
+                        #     obj.ViewObject.MapFaceColor = False
+                        # obj.ViewObject.ShapeColor = self.colors['board']
                     objs.append(obj)
                 obj = self._makeCompound(objs, 'board')
         finally:
@@ -1751,7 +1752,7 @@ class KicadFcad:
         return points
 
     def makePads(self,shape_type='face',thickness=0.05,holes=False,
-            fit_arcs=True,prefix=''):
+            fit_arcs=True,prefix='', board_thickness=None):
 
         self._pushLog('making pads...',prefix=prefix)
 
@@ -1804,6 +1805,8 @@ class KicadFcad:
                     return True
 
         count = 0
+        pad_count = 0
+        pad_locations = {}
         skip_count = 0
         for i,m in enumerate(self.pcb.module):
             ref = ''
@@ -1845,6 +1848,13 @@ class KicadFcad:
                 # kicad put pad shape offset inside drill element? Why?
                 if 'drill' in p and 'offset' in p.drill:
                     w.translate(makeVect(p.drill.offset))
+                # if we call the function to make pads for the face, we save the pad locations
+                elif thickness is not None and board_thickness is not None:
+                    if m.layer.strip('"') == 'F.Cu':
+                        offset = board_thickness + thickness
+                    else:
+                        offset = -thickness
+                    self._place(w,Vector(0,0,offset))
 
                 at,angle = getAt(p)
                 angle -= m_angle;
@@ -1857,8 +1867,22 @@ class KicadFcad:
                         f'{i}#{j}#{p[0]}#{ref}#{self.netName(p)}#{shape}'))
                 else:
                     pads.append(w)
+                w_tmp = w
+                if shape_type == 'solid' and thickness is not None and board_thickness is not None:
+                    m_at_tmp = m_at+Vector(0,0,thickness) # make ti such that we get the locaion of the upper surface of the pad
+                else:
+                    m_at_tmp = m_at
+                self._place(w_tmp,m_at_tmp,m_angle)
+                location = w_tmp.Placement.Base
+                # save the location of the pad for future reference
+                part = ref.strip('"')    
+                pin = p[0].strip('"')
+                net = self.netName(p).strip('"')
+                pad_locations[f'{part}_{pin}'] = f'{net}_{location}'
+                pad_count += 1
 
-            self._makeShape(m, 'fp', pads)
+
+            self._makeShape(m, 'fp', pads)            
 
             if not pads:
                 continue
@@ -1869,7 +1893,13 @@ class KicadFcad:
                 obj = func(pads,'pads','{}#{}'.format(i,ref))
             self._place(obj,m_at,m_angle)
             objs.append(obj)
-
+        # if we call the function to make pads for the face, we save the pad locations
+        if thickness is not None and board_thickness is not None:
+            # save the names and labels of the pads for future reference
+            file = self.filename.split('.kicad_pcb')[0] + '_pad_locations.json'
+            print(file)
+            with open(file, 'w') as f:
+                json.dump(pad_locations, f, indent=4)
         cut_wires = None
         cut_non_closed = None
 
@@ -1937,9 +1967,9 @@ class KicadFcad:
             color = self.colors[otype][self.layer_type]
         except KeyError:
             color = self.colors[otype][0]
-        if hasattr(obj.ViewObject,'MapFaceColor'):
-            obj.ViewObject.MapFaceColor = False
-        obj.ViewObject.ShapeColor = color
+        # if hasattr(obj.ViewObject,'MapFaceColor'):
+        #     obj.ViewObject.MapFaceColor = False
+        # obj.ViewObject.ShapeColor = color
 
 
     def makeTracks(self,shape_type='face',fit_arcs=True,
@@ -2398,7 +2428,7 @@ class KicadFcad:
                         obj = self._makeObject('Part::Feature','model',
                             label='{}#{}#{}'.format(module_idx,model_idx,ref),
                             links='Shape',shape=mobj[0])
-                        obj.ViewObject.DiffuseColor = mobj[1]
+                        # obj.ViewObject.DiffuseColor = mobj[1]
                         obj.Placement = pln
                         objs.append(obj)
                     self._log('loaded')
@@ -2528,4 +2558,3 @@ def test(names=''):
         pcb.make(fuseCoppers=True)
         pcb.add_feature = False
         Part.show(pcb.make())
-
