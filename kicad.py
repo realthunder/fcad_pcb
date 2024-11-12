@@ -353,9 +353,20 @@ def make_gr_rect(params):
     end = makeVect(params.end)
     return Part.makePolygon([start, Vector(start.x, end.y), end, Vector(end.x, start.y), start])
 
+
+def getLineWidth(param, default):
+    width = getattr(param, 'width', None)
+    if not width:
+        if hasattr(param, 'stroke'):
+            width = getattr(param.stroke, 'width', default)
+        else:
+            width = default
+    return width
+
+
 def makePrimitve(key, param):
     try:
-        width = getattr(param,'width',0)
+        width = getLineWidth(param, 0)
         if width and key == 'gr_circle':
             return make_gr_circle(param, width), 0
         else:
@@ -917,7 +928,7 @@ class KicadFcad:
         doc = getActiveDoc()
         obj = addObject(doc,otype,name)
         self._makeLabel(obj,label)
-        if links is not None:
+        if links:
             setObjectLinks(obj, links, shape)
             for s in shape if isinstance(shape,(list,tuple)) else (shape,):
                 if hasattr(s,'ViewObject'):
@@ -1266,7 +1277,8 @@ class KicadFcad:
                     shape.rotate(Vector(),Vector(0,0,1),angle)
                 if at:
                     shape.translate(at)
-                edges += [[getattr(l,'width',1e-7), e] for e in shape.Edges]
+                width = getLineWidth(l, 1e-7)
+                edges += [[width, e] for e in shape.Edges]
 
         # The line width in edge cuts are important. When milling, the line
         # width can represent the diameter of the drill bits to use. The user
@@ -1324,7 +1336,7 @@ class KicadFcad:
             wire = None
             try:
                 #  tol = max([o[0] for o in elist])
-                #  wire = Part.makeWires([o[1] for o in elist],'',tol,True)
+                #  wire = Part.makeWires([disableTopoNaming(o[1]) for o in elist],'',tol,True)
 
                 wire = Part.Wire([disableTopoNaming(o[1]) for o in elist])
                 #  wire.fixWire(None,tol)
@@ -2463,7 +2475,9 @@ class KicadFcad:
             fuseCoppers = True
 
         objs = []
-        objs.append(self.makeBoard(prefix=None,thickness=board_thickness))
+        board = self.makeBoard(prefix=None,thickness=board_thickness)
+        if board:
+            objs.append(board)
 
         coppers = self.makeCoppers(shape_type='solid',holes=True,prefix=None,
                 fit_arcs=fit_arcs,thickness=copper_thickness,fuse=fuseCoppers,
