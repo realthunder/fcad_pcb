@@ -595,7 +595,7 @@ class KicadFcad:
             raise ValueError("file not found");
         self.filename = filename
         self.colors = {
-                'board':makeColor("0x3A6629"),
+                'board':{0:makeColor("0x3A6629")},
                 'pad':{0:makeColor(204,204,204)},
                 'zone':{0:makeColor(0,80,0)},
                 'track':{0:makeColor(0,120,0)},
@@ -1466,10 +1466,7 @@ class KicadFcad:
 
             thickness = layers[0][1]
             obj = func()
-            if self.add_feature:
-                if hasattr(obj.ViewObject,'MapFaceColor'):
-                    obj.ViewObject.MapFaceColor = False
-                obj.ViewObject.ShapeColor = self.colors['board']
+            self.setColor(obj, 'board')
 
             if len(layers) > 1 and not single_layer:
                 objs = [obj]
@@ -1483,12 +1480,10 @@ class KicadFcad:
                     else:
                         obj = self._makeSolid(base[0], 'board', t)
                     self._place(obj,Vector(0,0,offset))
-                    if self.add_feature:
-                        if hasattr(obj.ViewObject,'MapFaceColor'):
-                            obj.ViewObject.MapFaceColor = False
-                        obj.ViewObject.ShapeColor = self.colors['board']
+                    self.setColor(obj, 'board')
                     objs.append(obj)
                 obj = self._makeCompound(objs, 'board')
+                self.setColor(obj, 'board')
         finally:
             if layer_save:
                 self.setLayer(layer_save)
