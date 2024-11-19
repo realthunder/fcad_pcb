@@ -603,6 +603,7 @@ class KicadFcad:
         }
         self.layer_type = 0
         self.layer_match = None
+        self.encoding = 'utf-8'
         # Ending of user customizable parameters
         #############################################################
 
@@ -614,7 +615,7 @@ class KicadFcad:
 
         if not self.part_path:
             self.part_path = getKicadPath(self.path_env)
-        self.pcb = KicadPCB.load(self.filename, self.quote_no_parse)
+        self.pcb = KicadPCB.load(self.filename, self.quote_no_parse, self.encoding)
 
         if self.pcb._key == 'footprint':
             self.pcb._key = 'module'
